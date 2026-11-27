@@ -2889,6 +2889,9 @@ struct ParticleContext(B){
 	EmitterTerrain!B* terrain; // the recorded terrain at the emission, or null (the current terrain)
 	void* data;
 	void function(ref ParticleRecord!B,void*) sink;
+	int group; // the particle group of the emitter (see particleGroup)
+	// the particle type of the emitter (functions with @particleTypes emit the particles of this type only)
+	@property ParticleType particleType(){ return particleTypeOfGroup(group); }
 	@property Sides!B sides(){ return state_.sides; }
 	@property SacMap!B map(){ return state_.map; }
 	auto uniform(string bounds="[]",T...)(T args){ return rng.uniform!bounds(args); }
@@ -2908,6 +2911,7 @@ struct ParticleContext(B){
 		return state_.map.getHeightWith(position,*terrain,EmitterTerrain!B.Edges(terrain));
 	}
 	void addParticle(ParticleKind kind,bool sideFiltered)(Particle!(B,kind,sideFiltered) particle){
+		assert(particleGroup(particle.sacParticle)==group,"particle type does not match the declared particle type of the particle function");
 		ParticleRecord!B r;
 		r.kind=kind;
 		r.sacParticle=particle.sacParticle;
@@ -2993,6 +2997,7 @@ struct TerrainRun{
 struct ParticleEmitter(B){
 	int id=0;
 	int function_; // index into particleFunctions
+	int group; // particle group of the particles (see particleGroup), the emitter is in ParticleEmitters.groups[group]
 	uint seed;
 	int phase=0; // 1 if the particles are emitted before the particle update of the frame, 0 otherwise
 	int maxLifetime=0;
@@ -3001,6 +3006,7 @@ struct ParticleEmitter(B){
 	// terrain history (for particles that bump off the ground): vertices [terrainI,terrainI+terrainWidth)×[terrainJ,terrainJ+terrainHeight)
 	int terrainI=0,terrainJ=0,terrainWidth=0,terrainHeight=0;
 	uint terrainKey=0;
+	float maxGround=-float.infinity; // highest recorded ground (particles above it cannot hit the ground)
 	Array!TerrainRun terrainRuns;
 	Array!float terrainDisplacements;
 	Array!ubyte terrainEdges;
@@ -3011,12 +3017,38 @@ struct ParticleEmitter(B){
 	}
 }
 
+// Particles are drawn by particle group: one group for each particle type, and one for each side for the
+// particle types whose look depends on the side (mana). All particles of an emitter are in the group of the emitter.
+enum numSideParticleTypes=3; // manalith, shrine, manahoar
+int particleGroup(ParticleType type,int side=-1){
+	if(side==-1) return type;
+	assert(ParticleType.manalith<=type&&type<ParticleType.manalith+numSideParticleTypes&&side>=0);
+	return ParticleType.max+1+numSideParticleTypes*side+(type-ParticleType.manalith);
+}
+int particleGroup(B)(SacParticle!B sacParticle){ return particleGroup(sacParticle.type,sacParticle.side); }
+SacParticle!B particleOfGroup(B)(ObjectState!B state,int group){
+	if(group<=ParticleType.max) return SacParticle!B.get(cast(ParticleType)group);
+	auto side=(group-(ParticleType.max+1))/numSideParticleTypes;
+	switch(particleTypeOfGroup(group)) with(ParticleType){
+		case manalith: return state.sides.manaParticle(side);
+		case shrine: return state.sides.shrineParticle(side);
+		case manahoar: return state.sides.manahoarParticle(side);
+		default: assert(0);
+	}
+}
+ParticleType particleTypeOfGroup(int group){
+	if(group<=ParticleType.max) return cast(ParticleType)group;
+	return cast(ParticleType)(ParticleType.manalith+(group-(ParticleType.max+1))%numSideParticleTypes);
+}
+
 struct ParticleEmitters(B){
-	Array!(ParticleEmitter!B) emitters; // sorted by id
+	Array!(Array!(ParticleEmitter!B)) groups; // the emitters of each particle group, sorted by id
 	int nextId=1;
 	int updateFrame=-1; // last frame at which the particles were updated
 	mixin Assign;
-	int find(int id){
+	int find(int group,int id){
+		if(group>=groups.length) return -1;
+		auto emitters=groups[group].data;
 		int l=0,r=cast(int)emitters.length;
 		while(l<r){
 			auto m=(l+r)/2;
@@ -3025,6 +3057,10 @@ struct ParticleEmitters(B){
 		}
 		if(l<emitters.length&&emitters[l].id==id) return l;
 		return -1;
+	}
+	ref Array!(ParticleEmitter!B) group(int group){
+		if(groups.length<=group) groups.length=group+1;
+		return groups[group];
 	}
 }
 
@@ -3067,6 +3103,36 @@ int particleMaxLifetime(alias f,B,P...)(P args){
 		return getUDAs!(f,particleLifetime)[0].frames;
 	}
 }
+// - the particle type, one of: @particleType(type); a function fParticleGroup(B)(args) that returns the particle group
+//   (when the type depends on the arguments); @particleTypes(types...) for a function that emits several particle
+//   types: each call then gets one emitter for each type, and the function emits the particles of the type
+//   state.particleType only (switch(state.particleType)).
+struct particleType{ ParticleType type; }
+struct particleTypes{
+	ParticleType[] types;
+	this(ParticleType[] types...){ this.types=types.dup; }
+}
+template numParticleParts(alias f){
+	import std.traits: hasUDA, getUDAs;
+	static if(hasUDA!(f,particleTypes)) enum numParticleParts=cast(int)getUDAs!(f,particleTypes)[0].types.length;
+	else enum numParticleParts=1;
+}
+int particlePartGroup(alias f,B,P...)(int part,P args){
+	import std.traits: hasUDA, getUDAs;
+	enum name=__traits(identifier,f);
+	enum hasFunction=__traits(compiles,mixin(name~"ParticleGroup!B"));
+	static assert(hasFunction+hasUDA!(f,particleType)+hasUDA!(f,particleTypes)==1,"declare the particle type of "~name~" exactly once");
+	static if(hasFunction) return mixin(name~"ParticleGroup!B")(args);
+	else static if(hasUDA!(f,particleType)) return particleGroup(getUDAs!(f,particleType)[0].type);
+	else{
+		enum types=getUDAs!(f,particleTypes)[0].types;
+		static assert(types.length>=2,"use @particleType for a single type");
+		switch(part){
+			static foreach(k,type;types) case k: return particleGroup(type);
+			default: assert(0);
+		}
+	}
+}
 enum Vector3f[2] noReach=[Vector3f(float.nan,float.nan,float.nan),Vector3f(float.nan,float.nan,float.nan)]; // no particles that bump off the ground
 bool particleReach(alias f,B,P...)(out Vector3f[2] box,P args){
 	enum name=__traits(identifier,f);
@@ -3098,8 +3164,11 @@ void emitParticles(alias f,B,T...)(ObjectState!B state,T args){
 }
 // record a call of a particle function. emitter: the emitter of the previous call of the same source (0 if none),
 // it is continued when possible and set to the emitter of this call. Each call is O(1) apart from the lookup by id.
+// A function with several particle types (@particleTypes) gets one emitter for each type, with consecutive ids
+// (emitter is the id of the first one), each in the group of its type.
 void continueParticles(alias f,B,T...)(ObjectState!B state,ref int emitter,T args){
 	enum index=cast(int)particleFunctionIndex!f;
+	enum numParts=numParticleParts!f;
 	alias P=ParticleFunctionArgs!(f,B);
 	static assert(P.length==T.length,"wrong number of arguments for "~__traits(identifier,f));
 	P params;
@@ -3115,39 +3184,59 @@ void continueParticles(alias f,B,T...)(ObjectState!B state,ref int emitter,T arg
 	bool updated=emitters.updateFrame==state.frame;
 	auto birth=updated?state.frame:state.frame-1;
 	auto phase=updated?0:1;
-	ParticleEmitter!B* current=null;
+	int[numParts] groups;
+	bool[numParts] tracksTerrain; // only particles that bump off the ground need the terrain history
+	int maxGroup=0;
+	foreach(k;0..numParts){
+		groups[k]=particlePartGroup!(f,B)(k,params);
+		tracksTerrain[k]=bounces&&SacParticle!B.bumpsOffGround(particleTypeOfGroup(groups[k]));
+		maxGroup=max(maxGroup,groups[k]);
+	}
+	emitters.group(maxGroup); // allocate the groups before taking pointers into them
+	ParticleEmitter!B*[numParts] current;
+	bool continued=false;
 	if(emitter){
-		auto i=emitters.find(emitter);
-		if(i!=-1){
-			auto candidate=&emitters.emitters[i];
-			if(candidate.function_==index&&candidate.phase==phase&&(!bounces||candidate.covers(rect)))
-				current=candidate;
+		continued=true;
+		foreach(k;0..numParts){
+			auto i=emitters.find(groups[k],emitter+k);
+			if(i==-1){ continued=false; break; }
+			auto candidate=&emitters.groups[groups[k]][i];
+			if(candidate.function_!=index||candidate.phase!=phase||tracksTerrain[k]&&!candidate.covers(rect)){ continued=false; break; }
+			current[k]=candidate;
 		}
 	}
-	if(current){
-		auto last=&current.emissions[current.emissions.length-1];
-		if(last.birth+last.count==birth&&last.args==packed){
-			last.count+=1;
-			last.maxLifetime=max(last.maxLifetime,maxLifetime);
-		}else current.emissions~=EmissionRun(current.numSerials++,birth,1,maxLifetime,packed);
+	if(continued){
+		foreach(k;0..numParts){
+			auto last=&current[k].emissions[current[k].emissions.length-1];
+			if(last.birth+last.count==birth&&last.args==packed){
+				last.count+=1;
+				last.maxLifetime=max(last.maxLifetime,maxLifetime);
+			}else current[k].emissions~=EmissionRun(current[k].numSerials++,birth,1,maxLifetime,packed);
+		}
 	}else{
-		ParticleEmitter!B newEmitter;
-		newEmitter.id=emitters.nextId++;
-		newEmitter.function_=index;
-		newEmitter.seed=ParticleRng.mix(cast(uint)state.frame*0x9e3779b9u^ParticleRng.mix(cast(uint)newEmitter.id));
-		newEmitter.phase=phase;
-		if(bounces){
-			newEmitter.terrainI=rect[0];
-			newEmitter.terrainJ=rect[2];
-			newEmitter.terrainWidth=rect[1]-rect[0]+1;
-			newEmitter.terrainHeight=rect[3]-rect[2]+1;
+		auto firstId=emitters.nextId;
+		emitters.nextId+=numParts;
+		foreach(k;0..numParts){
+			ParticleEmitter!B newEmitter;
+			newEmitter.id=firstId+k;
+			newEmitter.function_=index;
+			newEmitter.group=groups[k];
+			newEmitter.seed=ParticleRng.mix(cast(uint)state.frame*0x9e3779b9u^ParticleRng.mix(cast(uint)newEmitter.id));
+			newEmitter.phase=phase;
+			if(tracksTerrain[k]){
+				newEmitter.terrainI=rect[0];
+				newEmitter.terrainJ=rect[2];
+				newEmitter.terrainWidth=rect[1]-rect[0]+1;
+				newEmitter.terrainHeight=rect[3]-rect[2]+1;
+			}
+			newEmitter.emissions~=EmissionRun(newEmitter.numSerials++,birth,1,maxLifetime,packed);
+			auto group=&emitters.groups[groups[k]];
+			*group~=move(newEmitter);
+			current[k]=&(*group)[$-1];
 		}
-		newEmitter.emissions~=EmissionRun(newEmitter.numSerials++,birth,1,maxLifetime,packed);
-		emitters.emitters~=move(newEmitter);
-		current=&emitters.emitters[$-1];
 	}
-	current.maxLifetime=max(current.maxLifetime,maxLifetime);
-	emitter=current.id;
+	foreach(k;0..numParts) current[k].maxLifetime=max(current[k].maxLifetime,maxLifetime);
+	emitter=current[0].id;
 }
 
 // record the terrain at the current frame if it changed
@@ -3162,10 +3251,13 @@ void recordTerrain(B)(ref ParticleEmitter!B emitter,ObjectState!B state){
 	auto displacement=ObjectState!B.Displacement(state);
 	auto edges=state.map.edges;
 	auto offset=cast(int)emitter.terrainDisplacements.length;
+	auto heights=state.map.heights;
 	foreach(j;emitter.terrainJ..emitter.terrainJ+emitter.terrainHeight){
 		foreach(i;emitter.terrainI..emitter.terrainI+emitter.terrainWidth){
-			emitter.terrainDisplacements~=displacement(i,j);
+			auto d=displacement(i,j);
+			emitter.terrainDisplacements~=d;
 			emitter.terrainEdges~=cast(ubyte)edges[j][i];
+			emitter.maxGround=max(emitter.maxGround,heights[j][i]+d);
 		}
 	}
 	if(emitter.terrainRuns.length){
@@ -3212,14 +3304,16 @@ bool trimParticleEmitter(B)(ref ParticleEmitter!B emitter,ObjectState!B state){
 // called at the point where the particles are updated
 void updateParticleEmitters(B)(ref ParticleEmitters!B emitters,ObjectState!B state){
 	emitters.updateFrame=state.frame;
-	size_t w=0;
-	foreach(r;0..emitters.emitters.length){
-		if(!trimParticleEmitter(emitters.emitters[r],state)) continue;
-		if(emitters.emitters[r].tracksTerrain) recordTerrain(emitters.emitters[r],state);
-		if(w!=r) emitters.emitters[w]=move(emitters.emitters[r]);
-		w++;
+	foreach(ref group;emitters.groups.data){
+		size_t w=0;
+		foreach(r;0..group.length){
+			if(!trimParticleEmitter(group[r],state)) continue;
+			if(group[r].tracksTerrain) recordTerrain(group[r],state);
+			if(w!=r) group[w]=move(group[r]);
+			w++;
+		}
+		group.length=w;
 	}
-	emitters.emitters.length=w;
 }
 
 
@@ -3419,18 +3513,7 @@ void eachEmitterParticle(alias f,B,T...)(ref ParticleEmitter!B emitter,ObjectSta
 	evaluation.state=state;
 	evaluation.terrain=EmitterTerrain!B(&emitter,state.map.edges);
 	evaluation.args=&argsTuple;
-	if(emitter.terrainRuns.length){
-		auto heights=state.map.heights;
-		foreach(k;0..emitter.terrainRuns.length){
-			auto offset=emitter.terrainRuns[k].offset;
-			foreach(j;0..emitter.terrainHeight){
-				foreach(i;0..emitter.terrainWidth){
-					auto height=heights[emitter.terrainJ+j][emitter.terrainI+i]+emitter.terrainDisplacements[offset+emitter.terrainWidth*j+i];
-					evaluation.maxGround=max(evaluation.maxGround,height);
-				}
-			}
-		}
-	}
+	evaluation.maxGround=emitter.maxGround; // recorded with the terrain (may be stale after trimming, which only costs time)
 	auto emissionTerrain=EmitterTerrain!B(&emitter,state.map.edges); // terrain at the emission, for terrain queries
 	foreach(r;0..emitter.emissions.length){
 		auto run=&emitter.emissions[r];
@@ -3439,7 +3522,7 @@ void eachEmitterParticle(alias f,B,T...)(ref ParticleEmitter!B emitter,ObjectSta
 			evaluation.birth=birth;
 			auto frame=birth+emitter.phase;
 			auto rng=ParticleRng(emitter.seed,run.serial,birth-run.birth);
-			ParticleContext!B context={state_:state,rng:&rng,frame:frame,terrain:null,data:&evaluation,sink:&sink};
+			ParticleContext!B context={state_:state,rng:&rng,frame:frame,terrain:null,data:&evaluation,sink:&sink,group:emitter.group};
 			if(emitter.tracksTerrain&&emissionTerrain.set(frame)) context.terrain=&emissionTerrain;
 			callParticleFunction!B(emitter.function_,run.args,context);
 		}
@@ -9580,10 +9663,10 @@ void addGibCloudParticle(B)(Vector3f position,ParticleContext!B state,Vector3f[2
 	auto scaleRate=(endFactor-1.0f)*scale/lifetime;
 	state.addParticle(Particle!(B,ParticleKind.decaying)(sacParticle,scaleRate,lifetime,false,position,velocity,scale,lifetime,0));
 }
-@particleLifetime(180) void gibCloudBurstParticles(B)(Vector3f position,Vector3f[2] box,float sizeScale,int numParticles,ParticleContext!B state){
+@particleLifetime(180) @particleType(ParticleType.gibCloud) void gibCloudBurstParticles(B)(Vector3f position,Vector3f[2] box,float sizeScale,int numParticles,ParticleContext!B state){
 	foreach(i;0..numParticles) addGibCloudParticle(position,state,box,sizeScale);
 }
-@particleLifetime(180) void gibCloudParticles(B)(float rate,Vector3f position,Vector3f[2] box,float sizeScale,ParticleContext!B state){
+@particleLifetime(180) @particleType(ParticleType.gibCloud) void gibCloudParticles(B)(float rate,Vector3f position,Vector3f[2] box,float sizeScale,ParticleContext!B state){
 	emitContinuously!addGibCloudParticle(rate,position,position,state,box,sizeScale);
 }
 void spawnGibCloud(B)(Vector3f position,Vector3f[2] box,ObjectState!B state){
@@ -11904,7 +11987,7 @@ void animateTeleport(B)(bool isOut,Vector3f[2] hitbox,ObjectState!B state,bool s
 	state.emitParticles!sparkleParticles(hitbox,size.length,63);
 }
 int sparkleParticlesMaxLifetime(B)(Vector3f[2] hitbox,float pscale,int lifetime){ return lifetime; }
-void sparkleParticles(B)(Vector3f[2] hitbox,float pscale,int lifetime,ParticleContext!B state){
+@particleType(ParticleType.heal) void sparkleParticles(B)(Vector3f[2] hitbox,float pscale,int lifetime,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.heal);
 	auto velocity=Vector3f(0.0f,0.0f,0.0f);
 	auto frame=0;
@@ -12521,7 +12604,7 @@ bool castAnimateDead(B)(int creature,ManaDrain!B manaDrain,SacSpell!B spell,Obje
 void animateAnimateDead(B)(ref MovingObject!B obj,SacSpell!B spell,ObjectState!B state){
 	state.emitParticles!animateDeadParticles(obj.hitbox);
 }
-@particleLifetime(31) void animateDeadParticles(B)(Vector3f[2] hitbox,ParticleContext!B state){
+@particleLifetime(31) @particleType(ParticleType.castCharnel2) void animateDeadParticles(B)(Vector3f[2] hitbox,ParticleContext!B state){
 	enum numParticles=128;
 	auto sacParticle=SacParticle!B.get(ParticleType.castCharnel2);
 	auto center=boxCenter(hitbox);
@@ -13062,7 +13145,7 @@ bool getMeanstalkGroundPos(B)(ref Vector3f position,ObjectState!B state){
 void animateMeanstalkSpawn(B)(Vector3f position,ObjectState!B state){
 	state.emitParticles!meanstalkSpawnParticles(position);
 }
-@particleLifetime(159) void meanstalkSpawnParticles(B)(Vector3f position,ParticleContext!B state){
+@particleLifetime(159) @particleType(ParticleType.dirt) void meanstalkSpawnParticles(B)(Vector3f position,ParticleContext!B state){
 	enum numParticles=64;
 	auto sacParticle=SacParticle!B.get(ParticleType.dirt);
 	foreach(i;0..numParticles){
@@ -13378,7 +13461,7 @@ void animateGnomeHit(B)(Vector3f position,SacSpell!B rangedAttack,ObjectState!B 
 	state.emitParticles!gnomeHitParticles(position);
 }
 Vector3f[2] gnomeHitParticlesReach(B)(Vector3f position){ return grownBox(position,8.0f*(63)/updateFPS); }
-@particleLifetime(63) void gnomeHitParticles(B)(Vector3f position,ParticleContext!B state){
+@particleLifetime(63) @particleType(ParticleType.gnomeHit) void gnomeHitParticles(B)(Vector3f position,ParticleContext!B state){
 	enum numParticles3=200;
 	auto sacParticle3=SacParticle!B.get(ParticleType.gnomeHit);
 	foreach(i;0..numParticles3){
@@ -13492,7 +13575,7 @@ void animateWarmongerHit(B)(Vector3f position,SacSpell!B rangedAttack,ObjectStat
 	state.emitParticles!warmongerHitParticles(position);
 }
 Vector3f[2] warmongerHitParticlesReach(B)(Vector3f position){ return grownBox(position,3.2f*(31)/updateFPS); }
-@particleLifetime(31) void warmongerHitParticles(B)(Vector3f position,ParticleContext!B state){
+@particleLifetime(31) @particleType(ParticleType.warmongerHit) void warmongerHitParticles(B)(Vector3f position,ParticleContext!B state){
 	enum numParticles3=20;
 	auto sacParticle3=SacParticle!B.get(ParticleType.warmongerHit);
 	foreach(i;0..numParticles3){
@@ -15895,7 +15978,7 @@ void animateGhostTransition(B)(ref MovingObject!B wizard,ObjectState!B state){
 	state.emitParticles!ghostTransitionParticles(wizard.hitbox,wizard.position);
 }
 Vector3f[2] ghostTransitionParticlesReach(B)(Vector3f[2] hitbox,Vector3f wizardPosition){ return grownBox(hitbox,2.0f*(95)/updateFPS); }
-@particleLifetime(95) void ghostTransitionParticles(B)(Vector3f[2] hitbox,Vector3f wizardPosition,ParticleContext!B state){
+@particleLifetime(95) @particleType(ParticleType.ghostTransition) void ghostTransitionParticles(B)(Vector3f[2] hitbox,Vector3f wizardPosition,ParticleContext!B state){
 	enum numParticles=100;
 	auto sacParticle=SacParticle!B.get(ParticleType.ghostTransition);
 	foreach(i;0..numParticles){
@@ -15913,7 +15996,7 @@ void animateGhost(bool sideFiltered=true,B)(ref MovingObject!B wizard,ObjectStat
 	state.emitParticles!ghostParticles(wizard.hitbox,sideFiltered,wizard.side);
 }
 int ghostParticlesMaxLifetime(B)(Vector3f[2] hitbox,bool sideFiltered,int side){ return SacParticle!B.get(ParticleType.ghost).numFrames; }
-void ghostParticles(B)(Vector3f[2] hitbox,bool sideFiltered,int side,ParticleContext!B state){
+@particleType(ParticleType.ghost) void ghostParticles(B)(Vector3f[2] hitbox,bool sideFiltered,int side,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.ghost);
 	auto scale=1.0f; // TODO: does this differ for different creatures?
 	auto frame=state.uniform!"[)"(0,sacParticle.numFrames);
@@ -15937,6 +16020,7 @@ void firefistFlames(B)(ref MovingObject!B object,ObjectState!B state){
 		state.emitParticles!flameParticles(hand,ParticleType.fire,6,0.5f,0.3f,3.0f);
 }
 // flames at a point (firefist, warmonger, Styx)
+int flameParticlesParticleGroup(B)(Vector3f position,ParticleType type,int numParticles,float scale,float radius,float speed){ return particleGroup(type); }
 @particleLifetime(31) void flameParticles(B)(Vector3f position,ParticleType type,int numParticles,float scale,float radius,float speed,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(type);
 	foreach(i;0..numParticles){
@@ -15980,7 +16064,7 @@ void spawnPhoenixShieldParticles(B)(ref MovingObject!B object,int numParticles,O
 	auto hitbox=object.sacObject.hitbox(Quaternionf.identity(),object.scale,object.animationState,object.frame/updateAnimFactor);
 	state.emitParticles!phoenixShieldParticles(object.id,hitbox,numParticles);
 }
-@particleLifetime(31) void phoenixShieldParticles(B)(int id,Vector3f[2] hitbox,int numParticles,ParticleContext!B state){
+@particleLifetime(31) @particleType(ParticleType.fire) void phoenixShieldParticles(B)(int id,Vector3f[2] hitbox,int numParticles,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.fire);
 	auto center=boxCenter(hitbox);
 	auto size=boxSize(hitbox);
@@ -17201,7 +17285,7 @@ bool updateDebris(B)(ref Debris!B debris,ObjectState!B state){
 	return true;
 }
 int debrisParticlesMaxLifetime(B)(Vector3f oldPosition,Vector3f newPosition){ return SacParticle!B.get(ParticleType.firy).numFrames-1; }
-void debrisParticles(B)(Vector3f oldPosition,Vector3f newPosition,ParticleContext!B state){
+@particleType(ParticleType.firy) void debrisParticles(B)(Vector3f oldPosition,Vector3f newPosition,ParticleContext!B state){
 	enum numParticles=3;
 	auto sacParticle=SacParticle!B.get(ParticleType.firy);
 	auto velocity=Vector3f(0.0f,0.0f,0.0f);
@@ -17231,7 +17315,7 @@ void spawnFireParticles(B,T)(ref T object,int numParticles,ObjectState!B state,r
 }
 // id: creature the particles move with (relative hitbox), or 0
 int fireParticlesMaxLifetime(B)(int id,Vector3f[2] hitbox,int numParticles){ return SacParticle!B.get(ParticleType.fire).numFrames; }
-void fireParticles(B)(int id,Vector3f[2] hitbox,int numParticles,ParticleContext!B state){
+@particleType(ParticleType.fire) void fireParticles(B)(int id,Vector3f[2] hitbox,int numParticles,ParticleContext!B state){
 	auto dim=hitbox[1]-hitbox[0];
 	auto volume=dim.x*dim.y*dim.z;
 	auto scale=max(1.0f,cbrt(volume));
@@ -17578,7 +17662,7 @@ bool updateGuardian(B)(ref Guardian guardian,ObjectState!B state){
 }
 
 int speedUpParticlesMaxLifetime(B)(Vector3f[2] hitbox){ return SacParticle!B.get(ParticleType.speedUp).numFrames; }
-void speedUpParticles(B)(Vector3f[2] hitbox,ParticleContext!B state){
+@particleType(ParticleType.speedUp) void speedUpParticles(B)(Vector3f[2] hitbox,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.speedUp);
 	auto scale=1.0f; // TODO: does this differ for different creatures?
 	auto frame=state.uniform!"[)"(0,sacParticle.numFrames);
@@ -17626,7 +17710,7 @@ bool updateRedVortex(B)(ref RedVortex vortex,ObjectState!B state,float height=Re
 }
 int redVortexParticlesMaxLifetime(B)(Vector3f vortexPosition,float vortexScale,float radius){ return SacParticle!B.get(ParticleType.redVortexDroplet).numFrames; }
 Vector3f[2] redVortexParticlesReach(B)(Vector3f vortexPosition,float vortexScale,float radius){ return grownBox(vortexPosition,0.35f*radius*vortexScale+0.1f*(SacParticle!B.get(ParticleType.redVortexDroplet).numFrames)/updateFPS); }
-void redVortexParticles(B)(Vector3f vortexPosition,float vortexScale,float radius,ParticleContext!B state){
+@particleType(ParticleType.redVortexDroplet) void redVortexParticles(B)(Vector3f vortexPosition,float vortexScale,float radius,ParticleContext!B state){
 	foreach(i;0..2){
 		auto sacParticle=SacParticle!B.get(ParticleType.redVortexDroplet);
 		auto velocity=0.1f*state.uniformDirection();
@@ -17771,7 +17855,7 @@ void updateSacDocTether(B)(ref SacDocTether tether,ref MovingObject!B sacDoc,int
 	state.continueParticles!needleParticles(tether.particleEmitter,needle[0],needle[1]);
 }
 Vector3f[2] needleParticlesReach(B)(Vector3f position,Vector3f needleDirection){ return grownBox(position,2.0f*(Vector2f(needleDirection.x,needleDirection.y).length+1.0f)*(63)/updateFPS); }
-@particleLifetime(63) void needleParticles(B)(Vector3f position,Vector3f needleDirection,ParticleContext!B state){
+@particleLifetime(63) @particleType(ParticleType.needle) void needleParticles(B)(Vector3f position,Vector3f needleDirection,ParticleContext!B state){
 	enum numParticles=2;
 	auto sacParticle=SacParticle!B.get(ParticleType.needle);
 	foreach(i;0..numParticles){
@@ -18386,6 +18470,7 @@ void animateCasting(bool spread=true,int numParticles=-1,bool raise=false,B)(ref
 	state.emitParticles!castingParticles(wizard.hands,sacParticle.type,spread,numParticles_,raise);
 }
 int castingParticlesMaxLifetime(B)(Vector3f[2] hands,ParticleType type,bool spread,int numParticles,bool raise){ return SacParticle!B.get(type).numFrames-1; }
+int castingParticlesParticleGroup(B)(Vector3f[2] hands,ParticleType type,bool spread,int numParticles,bool raise){ return particleGroup(type); }
 void castingParticles(B)(Vector3f[2] hands,ParticleType type,bool spread,int numParticles,bool raise,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(type);
 	auto numFrames=sacParticle.numFrames;
@@ -18453,7 +18538,7 @@ void animateHealCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
 
 // particles flow from the wizard to the creature (the hitboxes are relative, NaN if the object does not exist)
 int healCastingParticlesMaxLifetime(B)(int creature,Vector3f[2] creatureHitbox,int wizard,Vector3f[2] wizardHitbox){ return SacParticle!B.get(ParticleType.relativeHeal).numFrames; }
-void healCastingParticles(B)(int creature,Vector3f[2] creatureHitbox,int wizard,Vector3f[2] wizardHitbox,ParticleContext!B state){
+@particleType(ParticleType.relativeHeal) void healCastingParticles(B)(int creature,Vector3f[2] creatureHitbox,int wizard,Vector3f[2] wizardHitbox,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.relativeHeal);
 	enum numParticles=2;
 	foreach(i;0..numParticles){
@@ -18507,7 +18592,7 @@ void animateHeal(B)(ref MovingObject!B obj,ObjectState!B state){
 	state.emitParticles!healParticles(obj.id,obj.relativeHitbox);
 }
 int healParticlesMaxLifetime(B)(int id,Vector3f[2] hitbox){ return SacParticle!B.get(ParticleType.relativeHeal).numFrames; }
-void healParticles(B)(int id,Vector3f[2] hitbox,ParticleContext!B state){
+@particleType(ParticleType.relativeHeal) void healParticles(B)(int id,Vector3f[2] hitbox,ParticleContext!B state){
 	static assert(updateFPS==60);
 	auto dim=hitbox[1]-hitbox[0];
 	auto volume=dim.x*dim.y*dim.z;
@@ -18548,7 +18633,7 @@ void animateLightningCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
 }
 
 int lightningCastingParticlesMaxLifetime(B)(int id,Vector3f offset){ return SacParticle!B.get(ParticleType.lightningCasting).numFrames; }
-void lightningCastingParticles(B)(int id,Vector3f offset,ParticleContext!B state){
+@particleType(ParticleType.lightningCasting) void lightningCastingParticles(B)(int id,Vector3f offset,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.lightningCasting);
 	enum numParticles=2;
 	foreach(i;0..numParticles){
@@ -18590,7 +18675,7 @@ void sparkAnimation(int numSparks=192,B)(Vector3f[2] hitbox,ObjectState!B state)
 	state.emitParticles!sparkParticles(hitbox,numSparks);
 }
 Vector3f[2] sparkParticlesReach(B)(Vector3f[2] hitbox,int numSparks){ return grownBox(scaleBox(hitbox,1.2f),1.0f*(63)/updateFPS); }
-@particleLifetime(63) void sparkParticles(B)(Vector3f[2] hitbox,int numSparks,ParticleContext!B state){
+@particleLifetime(63) @particleType(ParticleType.spark) void sparkParticles(B)(Vector3f[2] hitbox,int numSparks,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.spark);
 	auto center=boxCenter(hitbox);
 	foreach(i;0..numSparks){
@@ -18658,7 +18743,7 @@ bool updateWrathCasting(B)(ref WrathCasting!B wrathCast,ObjectState!B state){
 void animateWrath(B)(ref Wrath!B wrath,ObjectState!B state){
 	state.continueParticles!wrathParticles(wrath.particleEmitter,wrath.position,wrath.velocity);
 }
-@particleLifetime(31) void wrathParticles(B)(Vector3f wrathPosition,Vector3f wrathVelocity,ParticleContext!B state){
+@particleLifetime(31) @particleType(ParticleType.wrathCasting) void wrathParticles(B)(Vector3f wrathPosition,Vector3f wrathVelocity,ParticleContext!B state){
 	enum numParticles=5;
 	foreach(i;0..numParticles){
 		auto sacParticle=SacParticle!B.get(ParticleType.wrathCasting);
@@ -18745,30 +18830,39 @@ void wrathExplosion(B)(ref Wrath!B wrath,int target,ObjectState!B state){
 	state.emitParticles!wrathExplosionParticles(wrath.position);
 }
 Vector3f[2] wrathExplosionParticlesReach(B)(Vector3f wrathPosition){ return grownBox(wrathPosition,15.0f*(63)/updateFPS); }
-@particleLifetime(63) void wrathExplosionParticles(B)(Vector3f wrathPosition,ParticleContext!B state){
-	enum numParticles1=200;
-	enum numParticles2=400;
-	auto sacParticle1=SacParticle!B.get(ParticleType.wrathExplosion1);
-	auto sacParticle2=SacParticle!B.get(ParticleType.wrathExplosion2);
-	foreach(i;0..numParticles1+numParticles2){
-		auto direction=state.uniformDirection();
-		auto velocity=state.uniform(0.75f,3.0f)*direction;
-		auto scale=i<numParticles1?2.25f:1.5f;
-		auto lifetime=i<numParticles1?31:63;
-		auto frame=0;
-		auto position=wrathPosition;
-		if(i<numParticles1) position+=0.1f*velocity;
-		state.addParticle(Particle!B(i<numParticles1?sacParticle1:sacParticle2,position,velocity,scale,lifetime,frame));
-	}
-	enum numParticles3=200;
-	auto sacParticle3=SacParticle!B.get(ParticleType.wrathParticle);
-	foreach(i;0..numParticles3){
-		auto direction=state.uniformDirection();
-		auto velocity=state.uniform(5.0f,15.0f)*direction;
-		auto scale=state.uniform(0.75f,1.5f);
-		auto lifetime=63;
-		auto frame=0;
-		state.addParticle(Particle!B(sacParticle3,wrathPosition,velocity,scale,lifetime,frame));
+@particleLifetime(63) @particleTypes(ParticleType.wrathExplosion1,ParticleType.wrathExplosion2,ParticleType.wrathParticle) void wrathExplosionParticles(B)(Vector3f wrathPosition,ParticleContext!B state){
+	switch(state.particleType){
+		case ParticleType.wrathExplosion1,ParticleType.wrathExplosion2:{
+			bool first=state.particleType==ParticleType.wrathExplosion1;
+			enum numParticles1=200;
+			enum numParticles2=400;
+			auto sacParticle=SacParticle!B.get(state.particleType);
+			foreach(i;0..(first?numParticles1:numParticles2)){
+				auto direction=state.uniformDirection();
+				auto velocity=state.uniform(0.75f,3.0f)*direction;
+				auto scale=first?2.25f:1.5f;
+				auto lifetime=first?31:63;
+				auto frame=0;
+				auto position=wrathPosition;
+				if(first) position+=0.1f*velocity;
+				state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+			}
+			break;
+		}
+		case ParticleType.wrathParticle:{
+			enum numParticles3=200;
+			auto sacParticle3=SacParticle!B.get(ParticleType.wrathParticle);
+			foreach(i;0..numParticles3){
+				auto direction=state.uniformDirection();
+				auto velocity=state.uniform(5.0f,15.0f)*direction;
+				auto scale=state.uniform(0.75f,1.5f);
+				auto lifetime=63;
+				auto frame=0;
+				state.addParticle(Particle!B(sacParticle3,wrathPosition,velocity,scale,lifetime,frame));
+			}
+			break;
+		}
+		default: assert(0);
 	}
 }
 enum wrathFlyingHeight=0.5f;
@@ -18868,39 +18962,50 @@ void animateFireballExplosion(int reduceParticles=1,B)(Vector3f position,ObjectS
 	state.emitParticles!fireballExplosionParticles(position,scale_,reduceParticles);
 }
 Vector3f[2] fireballExplosionParticlesReach(B)(Vector3f position,float scale_,int reduceParticles){ return grownBox(position,15.0f*scale_*(95)/updateFPS); }
-@particleLifetime(127) void fireballExplosionParticles(B)(Vector3f position,float scale_,int reduceParticles,ParticleContext!B state){
+@particleLifetime(127) @particleTypes(ParticleType.explosion,ParticleType.explosion2,ParticleType.ashParticle,ParticleType.smoke) void fireballExplosionParticles(B)(Vector3f position,float scale_,int reduceParticles,ParticleContext!B state){
 	//explosionParticles(fireball.position,state);
-	auto numParticles1=200/reduceParticles;
-	auto numParticles2=800/reduceParticles;
-	auto sacParticle1=SacParticle!B.get(ParticleType.explosion);
-	auto sacParticle2=SacParticle!B.get(ParticleType.explosion2);
-	foreach(i;0..numParticles1+numParticles2){
-		auto direction=state.uniformDirection();
-		auto velocity=scale_*(i<numParticles1?1.0f:1.5f)*state.uniform(1.5f,6.0f)*direction;
-		auto scale=scale_;
-		auto lifetime=31;
-		auto frame=0;
-		state.addParticle(Particle!B(i<numParticles1?sacParticle1:sacParticle2,position,velocity,scale,lifetime,frame));
-	}
-	auto numParticles3=300/reduceParticles;
-	auto sacParticle3=SacParticle!B.get(ParticleType.ashParticle);
-	foreach(i;0..numParticles3){
-		auto direction=state.uniformDirection();
-		auto velocity=scale_*state.uniform(7.5f,15.0f)*direction;
-		auto scale=scale_*state.uniform(0.75f,1.5f);
-		auto lifetime=95;
-		auto frame=0;
-		state.addParticle(Particle!B(sacParticle3,position,velocity,scale,lifetime,frame));
-	}
-	enum numParticles4=75;
-	auto sacParticle4=SacParticle!B.get(ParticleType.smoke);
-	foreach(i;0..numParticles4){
-		auto direction=state.uniformDirection();
-		auto velocity=scale_*state.uniform(0.5f,2.0f)*direction+Vector3f(0.0f,0.0f,0.5f);
-		auto scale=scale_;
-		auto lifetime=127;
-		auto frame=0;
-		state.addParticle(Particle!B(sacParticle4,position,velocity,scale,lifetime,frame));
+	switch(state.particleType){
+		case ParticleType.explosion,ParticleType.explosion2:{
+			bool first=state.particleType==ParticleType.explosion;
+			auto numParticles=(first?200:800)/reduceParticles;
+			auto sacParticle=SacParticle!B.get(state.particleType);
+			foreach(i;0..numParticles){
+				auto direction=state.uniformDirection();
+				auto velocity=scale_*(first?1.0f:1.5f)*state.uniform(1.5f,6.0f)*direction;
+				auto scale=scale_;
+				auto lifetime=31;
+				auto frame=0;
+				state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+			}
+			break;
+		}
+		case ParticleType.ashParticle:{
+			auto numParticles3=300/reduceParticles;
+			auto sacParticle3=SacParticle!B.get(ParticleType.ashParticle);
+			foreach(i;0..numParticles3){
+				auto direction=state.uniformDirection();
+				auto velocity=scale_*state.uniform(7.5f,15.0f)*direction;
+				auto scale=scale_*state.uniform(0.75f,1.5f);
+				auto lifetime=95;
+				auto frame=0;
+				state.addParticle(Particle!B(sacParticle3,position,velocity,scale,lifetime,frame));
+			}
+			break;
+		}
+		case ParticleType.smoke:{
+			enum numParticles4=75;
+			auto sacParticle4=SacParticle!B.get(ParticleType.smoke);
+			foreach(i;0..numParticles4){
+				auto direction=state.uniformDirection();
+				auto velocity=scale_*state.uniform(0.5f,2.0f)*direction+Vector3f(0.0f,0.0f,0.5f);
+				auto scale=scale_;
+				auto lifetime=127;
+				auto frame=0;
+				state.addParticle(Particle!B(sacParticle4,position,velocity,scale,lifetime,frame));
+			}
+			break;
+		}
+		default: assert(0);
 	}
 }
 
@@ -18976,28 +19081,37 @@ void animateEmergingRock(B)(ref Rock!B rock,ObjectState!B state){
 	state.continueParticles!emergingRockParticles(rock.particleEmitter,rock.position);
 }
 Vector3f[2] emergingRockParticlesReach(B)(Vector3f rockPosition){ return grownBox(rockPosition,6.0f*(159)/updateFPS); }
-@particleLifetime(159) void emergingRockParticles(B)(Vector3f rockPosition,ParticleContext!B state){
-	enum numParticles=50;
-	auto sacParticle=SacParticle!B.get(ParticleType.rock);
-	foreach(i;0..numParticles){
-		auto direction=state.uniformDirection();
-		auto velocity=state.uniform(3.0f,6.0f)*direction;
-		velocity.z*=2.5f;
-		auto scale=state.uniform(0.25f,0.75f);
-		auto lifetime=159;
-		auto frame=0;
-		state.addParticle(Particle!B(sacParticle,rockPosition,velocity,scale,lifetime,frame));
-	}
-	enum numParticles4=20;
-	auto sacParticle4=SacParticle!B.get(ParticleType.dust);
-	foreach(i;0..numParticles4){
-		auto direction=state.uniformDirection();
-		auto position=rockPosition+0.75f*direction;
-		auto velocity=0.2f*direction;
-		auto scale=3.0f;
-		auto frame=0;
-		auto lifetime=31;
-		state.addParticle(Particle!B(sacParticle4,position,velocity,scale,lifetime,frame));
+@particleLifetime(159) @particleTypes(ParticleType.rock,ParticleType.dust) void emergingRockParticles(B)(Vector3f rockPosition,ParticleContext!B state){
+	switch(state.particleType){
+		case ParticleType.rock:{
+			enum numParticles=50;
+			auto sacParticle=SacParticle!B.get(ParticleType.rock);
+			foreach(i;0..numParticles){
+				auto direction=state.uniformDirection();
+				auto velocity=state.uniform(3.0f,6.0f)*direction;
+				velocity.z*=2.5f;
+				auto scale=state.uniform(0.25f,0.75f);
+				auto lifetime=159;
+				auto frame=0;
+				state.addParticle(Particle!B(sacParticle,rockPosition,velocity,scale,lifetime,frame));
+			}
+			break;
+		}
+		case ParticleType.dust:{
+			enum numParticles4=20;
+			auto sacParticle4=SacParticle!B.get(ParticleType.dust);
+			foreach(i;0..numParticles4){
+				auto direction=state.uniformDirection();
+				auto position=rockPosition+0.75f*direction;
+				auto velocity=0.2f*direction;
+				auto scale=3.0f;
+				auto frame=0;
+				auto lifetime=31;
+				state.addParticle(Particle!B(sacParticle4,position,velocity,scale,lifetime,frame));
+			}
+			break;
+		}
+		default: assert(0);
 	}
 }
 void animateRock(B)(ref Rock!B rock,Vector3f oldPosition,ObjectState!B state){
@@ -19006,7 +19120,7 @@ void animateRock(B)(ref Rock!B rock,Vector3f oldPosition,ObjectState!B state){
 		state.continueParticles!dustTrailParticles(rock.particleEmitter2,oldPosition,position,2,1.5f,0.3f);
 	}
 }
-@particleLifetime(31) void dustTrailParticles(B)(Vector3f oldPosition,Vector3f newPosition,int numParticles,float scale,float spread,ParticleContext!B state){
+@particleLifetime(31) @particleType(ParticleType.dust) void dustTrailParticles(B)(Vector3f oldPosition,Vector3f newPosition,int numParticles,float scale,float spread,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.dust);
 	auto velocity=Vector3f(0.0f,0.0f,0.0f);
 	auto lifetime=31;
@@ -19033,27 +19147,36 @@ void rockExplosion(B)(ref Rock!B rock,int target,ObjectState!B state){
 	state.emitParticles!rockExplosionParticles(rock.position);
 }
 Vector3f[2] rockExplosionParticlesReach(B)(Vector3f rockPosition){ return grownBox(rockPosition,15.0f*(95)/updateFPS); }
-@particleLifetime(95) void rockExplosionParticles(B)(Vector3f rockPosition,ParticleContext!B state){
-	enum numParticles3=100;
-	auto sacParticle3=SacParticle!B.get(ParticleType.rock);
-	foreach(i;0..numParticles3){
-		auto direction=state.uniformDirection();
-		auto velocity=state.uniform(7.5f,15.0f)*direction;
-		auto scale=state.uniform(1.0f,2.5f);
-		auto lifetime=95;
-		auto frame=0;
-		state.addParticle(Particle!B(sacParticle3,rockPosition,velocity,scale,lifetime,frame));
-	}
-	enum numParticles4=20;
-	auto sacParticle4=SacParticle!B.get(ParticleType.dirt);
-	foreach(i;0..numParticles4){
-		auto direction=state.uniformDirection();
-		auto position=rockPosition+0.75f*direction;
-		auto velocity=Vector3f(0.0f,0.0f,0.0f);
-		auto scale=3.0f;
-		auto frame=state.uniform(2)?0:state.uniform(24);
-		auto lifetime=63-frame;
-		state.addParticle(Particle!B(sacParticle4,position,velocity,scale,lifetime,frame));
+@particleLifetime(95) @particleTypes(ParticleType.rock,ParticleType.dirt) void rockExplosionParticles(B)(Vector3f rockPosition,ParticleContext!B state){
+	switch(state.particleType){
+		case ParticleType.rock:{
+			enum numParticles3=100;
+			auto sacParticle3=SacParticle!B.get(ParticleType.rock);
+			foreach(i;0..numParticles3){
+				auto direction=state.uniformDirection();
+				auto velocity=state.uniform(7.5f,15.0f)*direction;
+				auto scale=state.uniform(1.0f,2.5f);
+				auto lifetime=95;
+				auto frame=0;
+				state.addParticle(Particle!B(sacParticle3,rockPosition,velocity,scale,lifetime,frame));
+			}
+			break;
+		}
+		case ParticleType.dirt:{
+			enum numParticles4=20;
+			auto sacParticle4=SacParticle!B.get(ParticleType.dirt);
+			foreach(i;0..numParticles4){
+				auto direction=state.uniformDirection();
+				auto position=rockPosition+0.75f*direction;
+				auto velocity=Vector3f(0.0f,0.0f,0.0f);
+				auto scale=3.0f;
+				auto frame=state.uniform(2)?0:state.uniform(24);
+				auto lifetime=63-frame;
+				state.addParticle(Particle!B(sacParticle4,position,velocity,scale,lifetime,frame));
+			}
+			break;
+		}
+		default: assert(0);
 	}
 }
 
@@ -19249,7 +19372,7 @@ void swarmHit(B)(ref Swarm!B swarm,int target,ObjectState!B state){
 	dealSplashSpellDamageAt(target,swarm.spell,swarm.spell.damageRange,swarm.wizard,swarm.side,swarm.position,DamageMod.none,state);
 }
 Vector3f[2] swarmHitParticlesReach(B)(Vector3f[2] hitbox){ return grownBox(scaleBox(hitbox,1.2f),1.0f*(63)/updateFPS); }
-@particleLifetime(63) void swarmHitParticles(B)(Vector3f[2] hitbox,ParticleContext!B state){
+@particleLifetime(63) @particleType(ParticleType.swarmHit) void swarmHitParticles(B)(Vector3f[2] hitbox,ParticleContext!B state){
 	enum numParticles=128;
 	auto sacParticle=SacParticle!B.get(ParticleType.swarmHit);
 	auto center=boxCenter(hitbox);
@@ -19300,7 +19423,7 @@ void animateSkinOfStoneCasting(B)(ref SkinOfStoneCasting!B skinOfStoneCast,Objec
 	}
 }
 int skinOfStoneCastingParticlesMaxLifetime(B)(Vector3f position,Vector3f center,float castScale,float progress,int frame,int lifetime){ return lifetime; }
-void skinOfStoneCastingParticles(B)(Vector3f position,Vector3f center,float castScale,float progress,int frame,int lifetime,ParticleContext!B state){
+@particleType(ParticleType.dirt) void skinOfStoneCastingParticles(B)(Vector3f position,Vector3f center,float castScale,float progress,int frame,int lifetime,ParticleContext!B state){
 	auto castParticle=SacParticle!B.get(ParticleType.dirt);
 	enum numParticles=30;
 	foreach(k;0..numParticles){
@@ -19331,7 +19454,7 @@ bool updateSkinOfStoneCasting(B)(ref SkinOfStoneCasting!B skinOfStoneCast,Object
 }
 
 Vector3f[2] skinOfStoneEndParticlesReach(B)(Vector3f[2] hitbox){ return grownBox(hitbox,3.0f*(95)/updateFPS); }
-@particleLifetime(95) void skinOfStoneEndParticles(B)(Vector3f[2] hitbox,ParticleContext!B state){
+@particleLifetime(95) @particleType(ParticleType.rock) void skinOfStoneEndParticles(B)(Vector3f[2] hitbox,ParticleContext!B state){
 	enum numParticles=64;
 	auto sacParticle=SacParticle!B.get(ParticleType.rock);
 	foreach(i;0..numParticles){
@@ -19390,7 +19513,7 @@ void animateEtherealFormTransition(B)(ref MovingObject!B wizard,ObjectState!B st
 	playSpellSoundTypeAt(SoundType.lightning,wizard.id,state,2.0f);
 	state.emitParticles!etherealFormTransitionParticles(wizard.hitbox);
 }
-@particleLifetime(63) void etherealFormTransitionParticles(B)(Vector3f[2] hitbox,ParticleContext!B state){
+@particleLifetime(63) @particleType(ParticleType.etherealFormSpark) void etherealFormTransitionParticles(B)(Vector3f[2] hitbox,ParticleContext!B state){
 	enum numParticles=64;
 	auto sacParticle=SacParticle!B.get(ParticleType.etherealFormSpark);
 	foreach(i;0..numParticles){
@@ -19453,7 +19576,7 @@ void animateFireformCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
 	state.emitParticles!fireformCastingParticles(wizard.hands);
 }
 int fireformCastingParticlesMaxLifetime(B)(Vector3f[2] hands){ return SacParticle!B.get(ParticleType.firy).numFrames; }
-void fireformCastingParticles(B)(Vector3f[2] hands,ParticleContext!B state){
+@particleType(ParticleType.firy) void fireformCastingParticles(B)(Vector3f[2] hands,ParticleContext!B state){
 	auto castParticle=SacParticle!B.get(ParticleType.firy);
 	foreach(i;0..2){
 		auto hposition=hands[i];
@@ -19475,7 +19598,7 @@ void spawnFireformParticles(B)(ref MovingObject!B wizard,int numParticles,Object
 	auto hitbox=wizard.sacObject.hitbox(Quaternionf.identity(),wizard.scale,wizard.animationState,wizard.frame/updateAnimFactor);
 	state.emitParticles!fireformParticles(wizard.id,hitbox,numParticles);
 }
-@particleLifetime(31) void fireformParticles(B)(int id,Vector3f[2] hitbox,int numParticles,ParticleContext!B state){
+@particleLifetime(31) @particleType(ParticleType.fire) void fireformParticles(B)(int id,Vector3f[2] hitbox,int numParticles,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.fire);
 	auto center=boxCenter(hitbox);
 	auto size=boxSize(hitbox);
@@ -19808,6 +19931,7 @@ void animateFreezeCastingTarget(B)(ref MovingObject!B obj,ObjectState!B state){
 }
 // two particles that move with a creature: from a box around it to its center, or (outwards) the other way
 int castingTargetParticlesMaxLifetime(B)(int id,Vector3f[2] hitbox,ParticleType type,float spread,bool outwards,float scale){ return SacParticle!B.get(type).numFrames; }
+int castingTargetParticlesParticleGroup(B)(int id,Vector3f[2] hitbox,ParticleType type,float spread,bool outwards,float scale){ return particleGroup(type); }
 void castingTargetParticles(B)(int id,Vector3f[2] hitbox,ParticleType type,float spread,bool outwards,float scale,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(type);
 	auto center=boxCenter(hitbox);
@@ -19853,7 +19977,7 @@ void unfreeze(B)(ref MovingObject!B obj,ObjectState!B state){
 	obj.startIdling(state);
 }
 
-@particleLifetime(31) void shardParticles(B)(Vector3f[2] hitbox,ParticleContext!B state){
+@particleLifetime(31) @particleType(ParticleType.shard) void shardParticles(B)(Vector3f[2] hitbox,ParticleContext!B state){
 	auto center=boxCenter(hitbox);
 	auto dim=boxSize(hitbox);
 	auto volume=dim.x*dim.y*dim.z;
@@ -19925,7 +20049,7 @@ void animateRingsOfFire(bool relative=true,B)(ref MovingObject!B obj,ObjectState
 	auto hitbox=obj.sacObject.largeHitbox(obj.rotation,obj.scale,obj.animationState,obj.frame/updateAnimFactor);
 	state.emitParticles!ringsOfFireParticles(obj.id,obj.position,hitbox,getScale(obj).length,relative);
 }
-@particleLifetime(72) void ringsOfFireParticles(B)(int id,Vector3f objPosition,Vector3f[2] hitbox,float objScale,bool relative,ParticleContext!B state){
+@particleLifetime(72) @particleType(ParticleType.firy) void ringsOfFireParticles(B)(int id,Vector3f objPosition,Vector3f[2] hitbox,float objScale,bool relative,ParticleContext!B state){
 	enum numParticles=30;
 	auto sacParticle=SacParticle!B.get(ParticleType.firy);
 	auto height=state.uniform(0.4f,1.2f);
@@ -19996,7 +20120,7 @@ void animateSlimeTransition(B)(ref MovingObject!B obj,ObjectState!B state){
 	state.emitParticles!slimeTransitionParticles(obj.hitbox,0.8f*getScale(obj).length);
 }
 Vector3f[2] slimeTransitionParticlesReach(B)(Vector3f[2] hitbox,float scale){ return grownBox(scaleBox(hitbox,1.2f),1.0f*(63)/updateFPS); }
-@particleLifetime(63) void slimeTransitionParticles(B)(Vector3f[2] hitbox,float scale,ParticleContext!B state){
+@particleLifetime(63) @particleType(ParticleType.slime) void slimeTransitionParticles(B)(Vector3f[2] hitbox,float scale,ParticleContext!B state){
 	enum numParticles=128;
 	auto sacParticle=SacParticle!B.get(ParticleType.slime);
 	auto center=boxCenter(hitbox);
@@ -20016,7 +20140,7 @@ void animateSlime(bool relative=true,B)(ref MovingObject!B obj,ObjectState!B sta
 	state.continueParticles!slimeParticles(emitter,obj.id,obj.position,hitbox,getScale(obj).length,relative);
 }
 Vector3f[2] slimeParticlesReach(B)(int id,Vector3f objPosition,Vector3f[2] hitbox,float objScale,bool relative){ return relative?noReach:grownBox([objPosition+hitbox[0],objPosition+hitbox[1]],0.0f); }
-@particleLifetime(72) void slimeParticles(B)(int id,Vector3f objPosition,Vector3f[2] hitbox,float objScale,bool relative,ParticleContext!B state){
+@particleLifetime(72) @particleType(ParticleType.slime) void slimeParticles(B)(int id,Vector3f objPosition,Vector3f[2] hitbox,float objScale,bool relative,ParticleContext!B state){
 	enum numParticles=4;
 	auto sacParticle=SacParticle!B.get(ParticleType.slime);
 	auto duration=state.uniform(0.8f,1.2f);
@@ -20067,7 +20191,7 @@ void animateGraspingVinesCastingTarget(B)(ref MovingObject!B obj,ObjectState!B s
 	hitbox[0].z=0.0f;
 	state.emitParticles!graspingVinesCastingTargetParticles(hitbox,0.6f*getScale(obj).length);
 }
-@particleLifetime(31) void graspingVinesCastingTargetParticles(B)(Vector3f[2] hitbox,float scale,ParticleContext!B state){
+@particleLifetime(31) @particleType(ParticleType.dirt) void graspingVinesCastingTargetParticles(B)(Vector3f[2] hitbox,float scale,ParticleContext!B state){
 	enum numParticles=16;
 	auto sacParticle=SacParticle!B.get(ParticleType.dirt);
 	foreach(i;0..numParticles){
@@ -20170,30 +20294,38 @@ void animateSoulMole(B)(ref SoulMole!B soulMole,Vector3f oldPosition,ObjectState
 	state.continueParticles!soulMoleParticles(soulMole.particleEmitter,oldPosition,soulMole.position,state.isOnGround(soulMole.position));
 }
 Vector3f[2] soulMoleParticlesReach(B)(Vector3f oldPosition,Vector3f newPosition,bool onGround){ return grownBox(newPosition,10.0f*(63)/updateFPS); }
-@particleLifetime(63) void soulMoleParticles(B)(Vector3f oldPosition,Vector3f newPosition,bool onGround,ParticleContext!B state){
-	if(onGround){
-		enum numParticles=2;
-		auto sacParticle=SacParticle!B.get(ParticleType.dust);
-		foreach(i;0..numParticles){
-			auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+newPosition*(cast(float)(i+1)/numParticles);
-			auto velocity=Vector3f(0.0f,0.0f,0.0f);
-			auto lifetime=31;
-			auto scale=2.0f;
-			auto frame=0;
-			position+=0.6f*state.uniformDirection();
-			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+@particleLifetime(63) @particleTypes(ParticleType.dust,ParticleType.rock) void soulMoleParticles(B)(Vector3f oldPosition,Vector3f newPosition,bool onGround,ParticleContext!B state){
+	switch(state.particleType){
+		case ParticleType.dust:{
+			if(!onGround) break;
+			enum numParticles=2;
+			auto sacParticle=SacParticle!B.get(ParticleType.dust);
+			foreach(i;0..numParticles){
+				auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+newPosition*(cast(float)(i+1)/numParticles);
+				auto velocity=Vector3f(0.0f,0.0f,0.0f);
+				auto lifetime=31;
+				auto scale=2.0f;
+				auto frame=0;
+				position+=0.6f*state.uniformDirection();
+				state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+			}
+			break;
 		}
-	}
-	enum numParticles3=2;
-	auto sacParticle3=SacParticle!B.get(ParticleType.rock);
-	foreach(i;0..numParticles3){
-		auto position=newPosition;
-		auto direction=state.uniformDirection();
-		auto velocity=state.uniform(5f,10.0f)*direction;
-		auto scale=state.uniform(0.5f,2.0f);
-		auto lifetime=63;
-		auto frame=0;
-		state.addParticle(Particle!B(sacParticle3,position,velocity,scale,lifetime,frame));
+		case ParticleType.rock:{
+			enum numParticles3=2;
+			auto sacParticle3=SacParticle!B.get(ParticleType.rock);
+			foreach(i;0..numParticles3){
+				auto position=newPosition;
+				auto direction=state.uniformDirection();
+				auto velocity=state.uniform(5f,10.0f)*direction;
+				auto scale=state.uniform(0.5f,2.0f);
+				auto lifetime=63;
+				auto frame=0;
+				state.addParticle(Particle!B(sacParticle3,position,velocity,scale,lifetime,frame));
+			}
+			break;
+		}
+		default: assert(0);
 	}
 }
 
@@ -20326,6 +20458,7 @@ void animateRainbowCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
 }
 // particles rising around a wizard (hitbox relative to the wizard)
 int risingCastingParticlesMaxLifetime(B)(Vector3f wizardPosition,Quaternionf wizardRotation,Vector3f[2] hitbox,ParticleType type,int numParticles,float minScale,float maxScale){ return 2*SacParticle!B.get(type).numFrames; }
+int risingCastingParticlesParticleGroup(B)(Vector3f wizardPosition,Quaternionf wizardRotation,Vector3f[2] hitbox,ParticleType type,int numParticles,float minScale,float maxScale){ return particleGroup(type); }
 void risingCastingParticles(B)(Vector3f wizardPosition,Quaternionf wizardRotation,Vector3f[2] hitbox,ParticleType type,int numParticles,float minScale,float maxScale,ParticleContext!B state){
 	static assert(updateFPS==60);
 	auto castParticle=SacParticle!B.get(type);
@@ -20391,7 +20524,7 @@ void animateRainbowHit(B)(ref MovingObject!B obj,ObjectState!B state){
 	state.emitParticles!rainbowHitParticles(obj.hitbox);
 }
 Vector3f[2] rainbowHitParticlesReach(B)(Vector3f[2] hitbox){ return grownBox(hitbox,3.0f*0.5f*Vector2f((hitbox[1]-hitbox[0]).x,(hitbox[1]-hitbox[0]).y).length*(63)/updateFPS); }
-@particleLifetime(63) void rainbowHitParticles(B)(Vector3f[2] hitbox,ParticleContext!B state){
+@particleLifetime(63) @particleType(ParticleType.rainbowParticle) void rainbowHitParticles(B)(Vector3f[2] hitbox,ParticleContext!B state){
 	enum numParticles=128;
 	auto sacParticle=SacParticle!B.get(ParticleType.rainbowParticle);
 	auto center=boxCenter(hitbox);
@@ -20436,7 +20569,7 @@ bool updateRainbow(B)(ref Rainbow!B rainbow,ObjectState!B state){
 	}
 }
 
-@particleLifetime(63) void rainbowTrailParticles(B)(Vector3f position,ParticleContext!B state){
+@particleLifetime(63) @particleType(ParticleType.heal) void rainbowTrailParticles(B)(Vector3f position,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.heal);
 	auto velocity=Vector3f(0.0f,0.0f,0.0f);
 	auto lifetime=63;
@@ -20657,7 +20790,7 @@ bool updateEruptCasting(B)(ref EruptCasting!B eruptCast,ObjectState!B state){
 // rocks flying in all directions
 int rockBurstParticlesMaxLifetime(B)(Vector3f position,int numParticles,float speed,float size,int lifetime){ return lifetime; }
 Vector3f[2] rockBurstParticlesReach(B)(Vector3f position,int numParticles,float speed,float size,int lifetime){ return grownBox(position,15.0f*speed*(lifetime)/updateFPS); }
-void rockBurstParticles(B)(Vector3f position,int numParticles,float speed,float size,int lifetime,ParticleContext!B state){
+@particleType(ParticleType.rock) void rockBurstParticles(B)(Vector3f position,int numParticles,float speed,float size,int lifetime,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.rock);
 	foreach(i;0..numParticles){
 		auto direction=state.uniformDirection();
@@ -20668,7 +20801,7 @@ void rockBurstParticles(B)(Vector3f position,int numParticles,float speed,float 
 	}
 }
 // a cloud of dirt
-@particleLifetime(63) void dirtPuffParticles(B)(Vector3f position,int numParticles,float radius,float scale,ParticleContext!B state){
+@particleLifetime(63) @particleType(ParticleType.dirt) void dirtPuffParticles(B)(Vector3f position,int numParticles,float radius,float scale,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.dirt);
 	foreach(i;0..numParticles){
 		auto direction=state.uniformDirection();
@@ -20679,7 +20812,7 @@ void rockBurstParticles(B)(Vector3f position,int numParticles,float speed,float 
 		state.addParticle(Particle!B(sacParticle,pposition,velocity,scale,lifetime,frame));
 	}
 }
-@particleLifetime(31) void eruptDustParticles(B)(Vector3f eruptPosition,float range,float damageRange,ParticleContext!B state){
+@particleLifetime(31) @particleType(ParticleType.dust) void eruptDustParticles(B)(Vector3f eruptPosition,float range,float damageRange,ParticleContext!B state){
 	enum numParticles=24;
 	auto sacParticle=SacParticle!B.get(ParticleType.dust);
 	foreach(i;0..numParticles){
@@ -20779,7 +20912,7 @@ void eruptExplosion(B)(ref Erupt!B erupt,ObjectState!B state){
 	state.emitParticles!eruptExplosionParticles(position);
 }
 Vector3f[2] eruptExplosionParticlesReach(B)(Vector3f position){ return grownBox(position,45.0f*(127)/updateFPS); }
-@particleLifetime(127) void eruptExplosionParticles(B)(Vector3f position,ParticleContext!B state){
+@particleLifetime(127) @particleType(ParticleType.rock) void eruptExplosionParticles(B)(Vector3f position,ParticleContext!B state){
 	enum numParticles3=200;
 	auto sacParticle3=SacParticle!B.get(ParticleType.rock);
 	foreach(i;0..numParticles3){
@@ -20848,7 +20981,7 @@ bool updateEruptDebris(B)(ref EruptDebris!B eruptDebris,ObjectState!B state){
 	return true;
 }
 int eruptDebrisParticlesMaxLifetime(B)(Vector3f oldPosition,Vector3f newPosition){ return SacParticle!B.get(ParticleType.dirt).numFrames-1; }
-void eruptDebrisParticles(B)(Vector3f oldPosition,Vector3f newPosition,ParticleContext!B state){
+@particleType(ParticleType.dirt) void eruptDebrisParticles(B)(Vector3f oldPosition,Vector3f newPosition,ParticleContext!B state){
 	enum numParticles=3;
 	auto sacParticle=SacParticle!B.get(ParticleType.dirt);
 	auto velocity=Vector3f(0.0f,0.0f,0.0f);
@@ -20882,27 +21015,36 @@ void animateBore(B)(ref Bore!B bore,ObjectState!B state){
 	state.continueParticles!boreParticles(bore.particleEmitter,bore.position);
 }
 Vector3f[2] boreParticlesReach(B)(Vector3f borePosition){ return grownBox(borePosition,10.0f*(63)/updateFPS); }
-@particleLifetime(63) void boreParticles(B)(Vector3f borePosition,ParticleContext!B state){
-	enum numParticles=2;
-	auto sacParticle=SacParticle!B.get(ParticleType.dirt);
-	foreach(i;0..numParticles){
-		auto position=borePosition+0.5f*state.uniformDirection();
-		auto velocity=Vector3f(0.0f,0.0f,0.0f);
-		auto lifetime=31;
-		auto scale=2.0f;
-		auto frame=0;
-		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
-	}
-	enum numParticles2=2;
-	auto sacParticle2=SacParticle!B.get(ParticleType.rock);
-	foreach(i;0..numParticles2){
-		auto position=borePosition;
-		auto direction=state.uniformDirection();
-		auto velocity=state.uniform(5.0f,10.0f)*direction;
-		auto scale=state.uniform(0.5f,2.0f);
-		auto lifetime=63;
-		auto frame=0;
-		state.addParticle(Particle!B(sacParticle2,position,velocity,scale,lifetime,frame));
+@particleLifetime(63) @particleTypes(ParticleType.dirt,ParticleType.rock) void boreParticles(B)(Vector3f borePosition,ParticleContext!B state){
+	switch(state.particleType){
+		case ParticleType.dirt:{
+			enum numParticles=2;
+			auto sacParticle=SacParticle!B.get(ParticleType.dirt);
+			foreach(i;0..numParticles){
+				auto position=borePosition+0.5f*state.uniformDirection();
+				auto velocity=Vector3f(0.0f,0.0f,0.0f);
+				auto lifetime=31;
+				auto scale=2.0f;
+				auto frame=0;
+				state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+			}
+			break;
+		}
+		case ParticleType.rock:{
+			enum numParticles2=2;
+			auto sacParticle2=SacParticle!B.get(ParticleType.rock);
+			foreach(i;0..numParticles2){
+				auto position=borePosition;
+				auto direction=state.uniformDirection();
+				auto velocity=state.uniform(5.0f,10.0f)*direction;
+				auto scale=state.uniform(0.5f,2.0f);
+				auto lifetime=63;
+				auto frame=0;
+				state.addParticle(Particle!B(sacParticle2,position,velocity,scale,lifetime,frame));
+			}
+			break;
+		}
+		default: assert(0);
 	}
 }
 
@@ -21036,7 +21178,7 @@ bool animateDragonfireCasting(B)(ref Dragonfire!B dragonfire,int wizard,int cast
 	return true;
 }
 int dragonfireCastingParticlesMaxLifetime(B)(Vector3f center,Vector3f ncenter,float radius,float scale){ return SacParticle!B.get(ParticleType.firy).numFrames; }
-void dragonfireCastingParticles(B)(Vector3f center,Vector3f ncenter,float radius,float scale,ParticleContext!B state){
+@particleType(ParticleType.firy) void dragonfireCastingParticles(B)(Vector3f center,Vector3f ncenter,float radius,float scale,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.firy);
 	Vector3f[2] hitbox=[center-0.25f*radius*Vector3f(1.0f,1.0f,1.0f),center+0.25f*radius*Vector3f(1.0f,1.0f,1.0f)];
 	enum numParticles=2;
@@ -21078,7 +21220,7 @@ void animateDragonfire(B)(ref Dragonfire!B dragonfire,Vector3f newPosition,Vecto
 		state.continueParticles!dragonfireParticles(dragonfire.particleEmitter2,oldPosition,position,direction,scale_);
 	}
 }
-@particleLifetime(31) void dragonfireParticles(B)(Vector3f oldPosition,Vector3f newPosition,Vector3f direction,float scale_,ParticleContext!B state){
+@particleLifetime(31) @particleTypes(ParticleType.fireball,ParticleType.firy) void dragonfireParticles(B)(Vector3f oldPosition,Vector3f newPosition,Vector3f direction,float scale_,ParticleContext!B state){
 	enum numParticles=8;
 	auto sacParticle1=SacParticle!B.get(ParticleType.firy);
 	auto sacParticle2=SacParticle!B.get(ParticleType.fireball);
@@ -21086,7 +21228,13 @@ void animateDragonfire(B)(ref Dragonfire!B dragonfire,Vector3f newPosition,Vecto
 	auto lifetime=31;
 	auto pscale=2.0f*scale_;
 	auto frame=0;
-	foreach(i;0..numParticles){
+	int first,last; // the particles of the type of the emitter
+	switch(state.particleType){
+		case ParticleType.fireball: first=0; last=1; break;
+		case ParticleType.firy: first=1; last=numParticles; break;
+		default: assert(0);
+	}
+	foreach(i;first..last){
 		auto sacParticle=i!=0?sacParticle1:sacParticle2;
 		auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+newPosition*(cast(float)(i+1)/numParticles);
 		position+=0.3f*scale_*state.uniformDirection();
@@ -21443,40 +21591,52 @@ void animateEmergingHaloRock(B)(ref HaloRock!B haloRock,ObjectState!B state){
 	addEmergingScar(haloRock.spell,haloRock.position,state);
 }
 Vector3f[2] emergingHaloRockParticlesReach(B)(Vector3f rockPosition){ return grownBox(rockPosition,6.0f*haloRockSize/2.0f*(159)/updateFPS); }
-@particleLifetime(159) void emergingHaloRockParticles(B)(Vector3f rockPosition,ParticleContext!B state){
-	enum numParticles=20;
-	auto sacParticle=SacParticle!B.get(ParticleType.rock);
-	foreach(i;0..numParticles){
-		auto direction=state.uniformDirection();
-		auto velocity=state.uniform(3.0f,6.0f)*haloRockSize/2.0f*direction;
-		velocity.z*=2.5f;
-		auto scale=state.uniform(0.25f,0.75f);
-		auto lifetime=159;
-		auto frame=0;
-		state.addParticle(Particle!B(sacParticle,rockPosition,velocity,scale,lifetime,frame));
-	}
-	enum numParticles4=8;
-	auto sacParticle4=SacParticle!B.get(ParticleType.dust);
-	foreach(i;0..numParticles4){
-		auto direction=state.uniformDirection();
-		auto position=rockPosition+0.75f*haloRockSize/2.0f*direction;
-		auto velocity=0.2f*direction;
-		auto scale=3.0f*haloRockSize/2.0f;
-		auto frame=0;
-		auto lifetime=31;
-		state.addParticle(Particle!B(sacParticle4,position,velocity,scale,lifetime,frame));
-	}
-	enum numParticles5=24;
-	auto sacParticle5=SacParticle!B.get(ParticleType.dirt);
-	auto sizeScale=2.0f;
-	foreach(i;0..numParticles5){
-		auto direction=state.uniformDirection();
-		auto pposition=rockPosition+sizeScale*0.25f*direction-sizeScale*Vector3f(0.0f,0.0f,state.uniform(0.0f,1.0f));
-		auto velocity=sizeScale*Vector3f(0.0f,0.0f,1.0f);
-		auto frame=state.uniform(2)?0:state.uniform(24);
-		auto lifetime=63-frame;
-		auto scale=sizeScale*state.uniform(0.5f,1.0f);
-		state.addParticle(Particle!B(sacParticle5,pposition,velocity,sizeScale,lifetime,frame));
+@particleLifetime(159) @particleTypes(ParticleType.rock,ParticleType.dust,ParticleType.dirt) void emergingHaloRockParticles(B)(Vector3f rockPosition,ParticleContext!B state){
+	switch(state.particleType){
+		case ParticleType.rock:{
+			enum numParticles=20;
+			auto sacParticle=SacParticle!B.get(ParticleType.rock);
+			foreach(i;0..numParticles){
+				auto direction=state.uniformDirection();
+				auto velocity=state.uniform(3.0f,6.0f)*haloRockSize/2.0f*direction;
+				velocity.z*=2.5f;
+				auto scale=state.uniform(0.25f,0.75f);
+				auto lifetime=159;
+				auto frame=0;
+				state.addParticle(Particle!B(sacParticle,rockPosition,velocity,scale,lifetime,frame));
+			}
+			break;
+		}
+		case ParticleType.dust:{
+			enum numParticles4=8;
+			auto sacParticle4=SacParticle!B.get(ParticleType.dust);
+			foreach(i;0..numParticles4){
+				auto direction=state.uniformDirection();
+				auto position=rockPosition+0.75f*haloRockSize/2.0f*direction;
+				auto velocity=0.2f*direction;
+				auto scale=3.0f*haloRockSize/2.0f;
+				auto frame=0;
+				auto lifetime=31;
+				state.addParticle(Particle!B(sacParticle4,position,velocity,scale,lifetime,frame));
+			}
+			break;
+		}
+		case ParticleType.dirt:{
+			enum numParticles5=24;
+			auto sacParticle5=SacParticle!B.get(ParticleType.dirt);
+			auto sizeScale=2.0f;
+			foreach(i;0..numParticles5){
+				auto direction=state.uniformDirection();
+				auto pposition=rockPosition+sizeScale*0.25f*direction-sizeScale*Vector3f(0.0f,0.0f,state.uniform(0.0f,1.0f));
+				auto velocity=sizeScale*Vector3f(0.0f,0.0f,1.0f);
+				auto frame=state.uniform(2)?0:state.uniform(24);
+				auto lifetime=63-frame;
+				auto scale=sizeScale*state.uniform(0.5f,1.0f);
+				state.addParticle(Particle!B(sacParticle5,pposition,velocity,sizeScale,lifetime,frame));
+			}
+			break;
+		}
+		default: assert(0);
 	}
 }
 
@@ -21689,7 +21849,7 @@ void rainFrogExplosion(B)(ref RainFrog!B rainFrog,ObjectState!B state){
 		state.emitParticles!frogExplosionParticles(pposition,velocity);
 	}
 }
-@particleLifetime(31) void frogExplosionParticles(B)(Vector3f pposition,Vector3f velocity,ParticleContext!B state){
+@particleLifetime(31) @particleType(ParticleType.frogExplosion) void frogExplosionParticles(B)(Vector3f pposition,Vector3f velocity,ParticleContext!B state){
 	enum numParticles3=200;
 	auto sacParticle3=SacParticle!B.get(ParticleType.frogExplosion);
 	foreach(i;0..numParticles3){
@@ -22041,7 +22201,7 @@ void animateFrozenGroundSnowball(B)(ref FrozenGroundSnowball!B frozenGroundSnowb
 		state.continueParticles!snowballTrailParticles(frozenGroundSnowball.particleEmitter,oldPosition,position);
 	}
 }
-@particleLifetime(31) void snowballTrailParticles(B)(Vector3f oldPosition,Vector3f newPosition,ParticleContext!B state){
+@particleLifetime(31) @particleType(ParticleType.lightningCasting) void snowballTrailParticles(B)(Vector3f oldPosition,Vector3f newPosition,ParticleContext!B state){
 	enum numParticles=2;
 	auto sacParticle=SacParticle!B.get(ParticleType.lightningCasting);
 	auto velocity=Vector3f(0.0f,0.0f,0.0f);
@@ -22057,26 +22217,35 @@ void animateFrozenGroundSnowball(B)(ref FrozenGroundSnowball!B frozenGroundSnowb
 void frozenGroundSnowballExplosion(B)(ref FrozenGroundSnowball!B frozenGroundSnowball,ObjectState!B state){
 	state.emitParticles!snowballExplosionParticles(frozenGroundSnowball.position);
 }
-@particleLifetime(63) void snowballExplosionParticles(B)(Vector3f position,ParticleContext!B state){
-	auto sacParticle1=SacParticle!B.get(ParticleType.shard);
-	enum numParticles1=150;
-	foreach(i;0..numParticles1){
-		auto direction=state.uniformDirection();
-		auto velocity=2.0f*state.uniform(7.5f,15.0f)*direction;
-		auto scale=state.uniform(0.75f,1.25f);
-		auto lifetime=31;
-		auto frame=0;
-		state.addParticle(Particle!B(sacParticle1,position,velocity,scale,lifetime,frame));
-	}
-	auto sacParticle2=SacParticle!B.get(ParticleType.snowballShard);
-	enum numParticles2=150;
-	foreach(i;0..numParticles2){
-		auto direction=state.uniformDirection();
-		auto velocity=1.5f*state.uniform(7.5f,15.0f)*direction;
-		auto scale=state.uniform(0.75f,1.25f);
-		auto lifetime=63;
-		auto frame=0;
-		state.addParticle(Particle!B(sacParticle2,position,velocity,scale,lifetime,frame));
+@particleLifetime(63) @particleTypes(ParticleType.shard,ParticleType.snowballShard) void snowballExplosionParticles(B)(Vector3f position,ParticleContext!B state){
+	switch(state.particleType){
+		case ParticleType.shard:{
+			auto sacParticle1=SacParticle!B.get(ParticleType.shard);
+			enum numParticles1=150;
+			foreach(i;0..numParticles1){
+				auto direction=state.uniformDirection();
+				auto velocity=2.0f*state.uniform(7.5f,15.0f)*direction;
+				auto scale=state.uniform(0.75f,1.25f);
+				auto lifetime=31;
+				auto frame=0;
+				state.addParticle(Particle!B(sacParticle1,position,velocity,scale,lifetime,frame));
+			}
+			break;
+		}
+		case ParticleType.snowballShard:{
+			auto sacParticle2=SacParticle!B.get(ParticleType.snowballShard);
+			enum numParticles2=150;
+			foreach(i;0..numParticles2){
+				auto direction=state.uniformDirection();
+				auto velocity=1.5f*state.uniform(7.5f,15.0f)*direction;
+				auto scale=state.uniform(0.75f,1.25f);
+				auto lifetime=63;
+				auto frame=0;
+				state.addParticle(Particle!B(sacParticle2,position,velocity,scale,lifetime,frame));
+			}
+			break;
+		}
+		default: assert(0);
 	}
 }
 
@@ -22097,7 +22266,7 @@ bool updateFrozenGroundSnowball(B)(ref FrozenGroundSnowball!B frozenGroundSnowba
 		return true;
 	}
 }
-@particleLifetime(31) void frozenGroundShardParticles(B)(Vector3f center,float prevDist,float curDist,ParticleContext!B state){
+@particleLifetime(31) @particleType(ParticleType.shard) void frozenGroundShardParticles(B)(Vector3f center,float prevDist,float curDist,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.shard);
 	enum numParticles=150;
 	foreach(i;0..numParticles){
@@ -22260,7 +22429,7 @@ void wallTargets(alias f,alias filter=None,bool keepNonObstacles=false,B,T...)(W
 enum firewallGain=3.0f;
 // a flame where a growing firewall reaches
 int firewallGrowthParticlesMaxLifetime(B)(Vector3f base,Vector2f direction){ return 2*SacParticle!B.get(ParticleType.firy).numFrames; }
-void firewallGrowthParticles(B)(Vector3f base,Vector2f direction,ParticleContext!B state){
+@particleType(ParticleType.firy) void firewallGrowthParticles(B)(Vector3f base,Vector2f direction,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.firy);
 	auto numFrames=sacParticle.numFrames;
 	auto orthogonal=Vector3f(direction.y,-direction.x,0.0f);
@@ -22273,7 +22442,7 @@ void firewallGrowthParticles(B)(Vector3f base,Vector2f direction,ParticleContext
 }
 // the flames of a firewall (see Firewall.get, scale and height)
 int firewallParticlesMaxLifetime(B)(Vector3f center,Vector2f direction,float left,float right,float top,int wallFrame){ return SacParticle!B.get(ParticleType.firewall).numFrames; }
-void firewallParticles(B)(Vector3f center,Vector2f direction,float left,float right,float top,int wallFrame,ParticleContext!B state){
+@particleType(ParticleType.firewall) void firewallParticles(B)(Vector3f center,Vector2f direction,float left,float right,float top,int wallFrame,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.firewall);
 	auto numFrames=sacParticle.numFrames;
 	auto orthogonal=Vector3f(direction.y,-direction.x,0.0f);
@@ -22616,6 +22785,7 @@ Vector3f vinewallVineSpawnPosition(B)(ref Vinewall!B vinewall,ObjectState!B stat
 }
 
 // five particles around something that grows out of the ground
+int sproutParticlesParticleGroup(B)(Vector3f base,ParticleType type,float size){ return particleGroup(type); }
 @particleLifetime(31) void sproutParticles(B)(Vector3f base,ParticleType type,float size,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(type);
 	enum numParticles=5;
@@ -22834,7 +23004,7 @@ bool wallOfSpikesSpike(B)(ref MovingObject!B obj,ref WallOfSpikes!B wallOfSpikes
 	state.emitParticles!spikeHitParticles(spikePosition,wallOfSpikes.spikeScale);
 	return true;
 }
-@particleLifetime(63) void spikeHitParticles(B)(Vector3f spikePosition,float spikeScale,ParticleContext!B state){
+@particleLifetime(63) @particleType(ParticleType.dirt) void spikeHitParticles(B)(Vector3f spikePosition,float spikeScale,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.dirt);
 	enum numParticles=25;
 	foreach(i;0..numParticles){
@@ -23229,7 +23399,7 @@ int plagueDropCollisionTarget(B)(Vector3f position,ObjectState!B state){
 	return collisionTarget!(plagueDropHitbox,filter)(-1,position,state);
 }
 enum plagueGain=1.0f;
-@particleLifetime(127) void plagueExplosionParticles(B)(Vector3f[2] hitbox,Vector3f position,ParticleContext!B state){
+@particleLifetime(127) @particleType(ParticleType.poison) void plagueExplosionParticles(B)(Vector3f[2] hitbox,Vector3f position,ParticleContext!B state){
 	enum numParticles2=50;
 	auto sacParticle2=SacParticle!B.get(ParticleType.poison);
 	auto scale=boxSize(hitbox).length;
@@ -23270,6 +23440,7 @@ void plagueDropExplosion(B)(ref PlagueDrop!B plagueDrop,int target,ObjectState!B
 }
 // particles along the path of a projectile in this frame
 int trailParticlesMaxLifetime(B)(Vector3f oldPosition,Vector3f newPosition,ParticleType type,int numParticles,float scale,float spread,int lifetime,int frame){ return lifetime; }
+int trailParticlesParticleGroup(B)(Vector3f oldPosition,Vector3f newPosition,ParticleType type,int numParticles,float scale,float spread,int lifetime,int frame){ return particleGroup(type); }
 void trailParticles(B)(Vector3f oldPosition,Vector3f newPosition,ParticleType type,int numParticles,float scale,float spread,int lifetime,int frame,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(type);
 	auto velocity=Vector3f(0.0f,0.0f,0.0f);
@@ -23280,14 +23451,20 @@ void trailParticles(B)(Vector3f oldPosition,Vector3f newPosition,ParticleType ty
 	}
 }
 // fire along the path of a fireball (the first particle is the ball)
-@particleLifetime(31) void fireTrailParticles(B)(Vector3f oldPosition,Vector3f newPosition,float scale,float spread,ParticleContext!B state){
+@particleLifetime(31) @particleTypes(ParticleType.fireball,ParticleType.firy) void fireTrailParticles(B)(Vector3f oldPosition,Vector3f newPosition,float scale,float spread,ParticleContext!B state){
 	enum numParticles=8;
 	auto sacParticle1=SacParticle!B.get(ParticleType.firy);
 	auto sacParticle2=SacParticle!B.get(ParticleType.fireball);
 	auto velocity=Vector3f(0.0f,0.0f,0.0f);
 	auto lifetime=31;
 	auto frame=0;
-	foreach(i;0..numParticles){
+	int first,last; // the particles of the type of the emitter
+	switch(state.particleType){
+		case ParticleType.fireball: first=0; last=1; break;
+		case ParticleType.firy: first=1; last=numParticles; break;
+		default: assert(0);
+	}
+	foreach(i;first..last){
 		auto sacParticle=i!=0?sacParticle1:sacParticle2;
 		auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+newPosition*(cast(float)(i+1)/numParticles);
 		position+=spread*state.uniformDirection();
@@ -23295,7 +23472,7 @@ void trailParticles(B)(Vector3f oldPosition,Vector3f newPosition,ParticleType ty
 	}
 }
 // sparks that fly towards the path of blind rage and death
-@particleLifetime(31) void swirlTrailParticles(B)(Vector3f oldPosition,Vector3f newPosition,ParticleContext!B state){
+@particleLifetime(31) @particleType(ParticleType.castPyro2) void swirlTrailParticles(B)(Vector3f oldPosition,Vector3f newPosition,ParticleContext!B state){
 	enum numParticles=3;
 	auto sacParticle=SacParticle!B.get(ParticleType.castPyro2);
 	auto lifetime=31;
@@ -23315,7 +23492,7 @@ void animatePlagueDrop(B)(ref PlagueDrop!B plagueDrop,ObjectState!B state){
 	state.continueParticles!plagueDropParticles(plagueDrop.particleEmitter,plagueDrop.position,plagueDrop.velocity);
 }
 int plagueDropParticlesMaxLifetime(B)(Vector3f dropPosition,Vector3f dropVelocity){ return SacParticle!B.get(ParticleType.blood).numFrames-1; }
-void plagueDropParticles(B)(Vector3f dropPosition,Vector3f dropVelocity,ParticleContext!B state){
+@particleType(ParticleType.blood) void plagueDropParticles(B)(Vector3f dropPosition,Vector3f dropVelocity,ParticleContext!B state){
 	auto tscale=boxSize(plagueDropHitbox).length;
 	enum numParticles=2;
 	auto sacParticle=SacParticle!B.get(ParticleType.blood);
@@ -23529,41 +23706,53 @@ void animateEmergingBombardmentDrop(B)(ref BombardmentDrop!B bombardmentDrop,Obj
 	addEmergingScar(bombardmentDrop.spell,bombardmentDrop.position,state); // original: MeteorShowerRun
 }
 Vector3f[2] emergingBombardmentDropParticlesReach(B)(Vector3f dropPosition,Vector3f dropVelocity){ return grownBox(dropPosition,6.0f*bombardmentDropSize/2.0f*(159)/updateFPS); }
-@particleLifetime(159) void emergingBombardmentDropParticles(B)(Vector3f dropPosition,Vector3f dropVelocity,ParticleContext!B state){
-	enum numParticles=20;
-	auto sacParticle=SacParticle!B.get(ParticleType.rock);
-	foreach(i;0..numParticles){
-		auto direction=state.uniformDirection();
-		auto velocity=state.uniform(3.0f,6.0f)*bombardmentDropSize/2.0f*direction;
-		velocity.z*=2.5f;
-		auto scale=2.0f*state.uniform(0.25f,0.75f);
-		auto lifetime=159;
-		auto frame=0;
-		state.addParticle(Particle!B(sacParticle,dropPosition,velocity,scale,lifetime,frame));
-	}
-	enum numParticles4=8;
-	auto sacParticle4=SacParticle!B.get(ParticleType.dust);
-	foreach(i;0..numParticles4){
-		auto direction=state.uniformDirection();
-		auto position=dropPosition+0.75f*bombardmentDropSize/2.0f*direction;
-		auto velocity=0.6f*direction;
-		auto scale=3.0f*bombardmentDropSize/2.0f;
-		auto frame=0;
-		auto lifetime=31;
-		state.addParticle(Particle!B(sacParticle4,position,velocity,scale,lifetime,frame));
-	}
-	enum numParticles5=24;
-	auto sacParticle5=SacParticle!B.get(ParticleType.dirt);
-	auto sizeScale=2.5f;
-	auto departureDirection=dropVelocity.normalized;
-	foreach(i;0..numParticles5){
-		auto direction=state.uniformDirection();
-		auto pposition=dropPosition+sizeScale*0.25f*direction-sizeScale*Vector3f(0.0f,0.0f,state.uniform(0.0f,1.0f));
-		auto velocity=3.0f*sizeScale*departureDirection+0.75f*sizeScale*direction*state.uniform(0.5f,1.25f);
-		auto frame=state.uniform(2)?0:state.uniform(24);
-		auto lifetime=63-frame;
-		auto scale=sizeScale*state.uniform(0.5f,1.0f);
-		state.addParticle(Particle!B(sacParticle5,pposition,velocity,sizeScale,lifetime,frame));
+@particleLifetime(159) @particleTypes(ParticleType.rock,ParticleType.dust,ParticleType.dirt) void emergingBombardmentDropParticles(B)(Vector3f dropPosition,Vector3f dropVelocity,ParticleContext!B state){
+	switch(state.particleType){
+		case ParticleType.rock:{
+			enum numParticles=20;
+			auto sacParticle=SacParticle!B.get(ParticleType.rock);
+			foreach(i;0..numParticles){
+				auto direction=state.uniformDirection();
+				auto velocity=state.uniform(3.0f,6.0f)*bombardmentDropSize/2.0f*direction;
+				velocity.z*=2.5f;
+				auto scale=2.0f*state.uniform(0.25f,0.75f);
+				auto lifetime=159;
+				auto frame=0;
+				state.addParticle(Particle!B(sacParticle,dropPosition,velocity,scale,lifetime,frame));
+			}
+			break;
+		}
+		case ParticleType.dust:{
+			enum numParticles4=8;
+			auto sacParticle4=SacParticle!B.get(ParticleType.dust);
+			foreach(i;0..numParticles4){
+				auto direction=state.uniformDirection();
+				auto position=dropPosition+0.75f*bombardmentDropSize/2.0f*direction;
+				auto velocity=0.6f*direction;
+				auto scale=3.0f*bombardmentDropSize/2.0f;
+				auto frame=0;
+				auto lifetime=31;
+				state.addParticle(Particle!B(sacParticle4,position,velocity,scale,lifetime,frame));
+			}
+			break;
+		}
+		case ParticleType.dirt:{
+			enum numParticles5=24;
+			auto sacParticle5=SacParticle!B.get(ParticleType.dirt);
+			auto sizeScale=2.5f;
+			auto departureDirection=dropVelocity.normalized;
+			foreach(i;0..numParticles5){
+				auto direction=state.uniformDirection();
+				auto pposition=dropPosition+sizeScale*0.25f*direction-sizeScale*Vector3f(0.0f,0.0f,state.uniform(0.0f,1.0f));
+				auto velocity=3.0f*sizeScale*departureDirection+0.75f*sizeScale*direction*state.uniform(0.5f,1.25f);
+				auto frame=state.uniform(2)?0:state.uniform(24);
+				auto lifetime=63-frame;
+				auto scale=sizeScale*state.uniform(0.5f,1.0f);
+				state.addParticle(Particle!B(sacParticle5,pposition,velocity,sizeScale,lifetime,frame));
+			}
+			break;
+		}
+		default: assert(0);
 	}
 }
 
@@ -23612,27 +23801,36 @@ int bombardmentDropCollisionTarget(B)(Vector3f position,ObjectState!B state){
 }
 enum bombardmentGain=1.0f;
 Vector3f[2] bombardmentExplosionParticlesReach(B)(Vector3f position){ return grownBox(position,30.0f*(95)/updateFPS); }
-@particleLifetime(95) void bombardmentExplosionParticles(B)(Vector3f position,ParticleContext!B state){
-	enum numParticles3=100;
-	auto sacParticle3=SacParticle!B.get(ParticleType.rock);
-	foreach(i;0..numParticles3){
-		auto direction=state.uniformDirection();
-		auto velocity=1.5f*state.uniform(10.0f,20.0f)*direction;
-		auto scale=1.5f*state.uniform(1.0f,1.5f);
-		auto lifetime=95;
-		auto frame=0;
-		state.addParticle(Particle!B(sacParticle3,position,velocity,scale,lifetime,frame));
-	}
-	enum numParticles4=20;
-	auto sacParticle4=SacParticle!B.get(ParticleType.dirt);
-	foreach(i;0..numParticles4){
-		auto direction=1.5f*state.uniformDirection();
-		auto pposition=position+direction;
-		auto velocity=Vector3f(0.0f,0.0f,0.0f);
-		auto scale=1.5f*3.75f;
-		auto frame=state.uniform(2)?0:state.uniform(24);
-		auto lifetime=63-frame;
-		state.addParticle(Particle!B(sacParticle4,pposition,velocity,scale,lifetime,frame));
+@particleLifetime(95) @particleTypes(ParticleType.rock,ParticleType.dirt) void bombardmentExplosionParticles(B)(Vector3f position,ParticleContext!B state){
+	switch(state.particleType){
+		case ParticleType.rock:{
+			enum numParticles3=100;
+			auto sacParticle3=SacParticle!B.get(ParticleType.rock);
+			foreach(i;0..numParticles3){
+				auto direction=state.uniformDirection();
+				auto velocity=1.5f*state.uniform(10.0f,20.0f)*direction;
+				auto scale=1.5f*state.uniform(1.0f,1.5f);
+				auto lifetime=95;
+				auto frame=0;
+				state.addParticle(Particle!B(sacParticle3,position,velocity,scale,lifetime,frame));
+			}
+			break;
+		}
+		case ParticleType.dirt:{
+			enum numParticles4=20;
+			auto sacParticle4=SacParticle!B.get(ParticleType.dirt);
+			foreach(i;0..numParticles4){
+				auto direction=1.5f*state.uniformDirection();
+				auto pposition=position+direction;
+				auto velocity=Vector3f(0.0f,0.0f,0.0f);
+				auto scale=1.5f*3.75f;
+				auto frame=state.uniform(2)?0:state.uniform(24);
+				auto lifetime=63-frame;
+				state.addParticle(Particle!B(sacParticle4,pposition,velocity,scale,lifetime,frame));
+			}
+			break;
+		}
+		default: assert(0);
 	}
 }
 void bombardmentDropExplosion(B)(ref BombardmentDrop!B bombardmentDrop,int target,ObjectState!B state){
@@ -23914,7 +24112,7 @@ void animateGroundForCow(B)(Vector3f position,int frame,ObjectState!B state){
 	state.emitParticles!groundForCowParticles(position);
 	if(frame%(updateFPS/10)==0) state.addEffect(ScreenShake(position,updateFPS/10,0.2f*float(frame+updateFPS/6)/updateFPS,60.0f));
 }
-@particleLifetime(31) void groundForCowParticles(B)(Vector3f position,ParticleContext!B state){
+@particleLifetime(31) @particleType(ParticleType.dirt) void groundForCowParticles(B)(Vector3f position,ParticleContext!B state){
 	enum range=3.0f;
 	enum numParticles=3;
 	auto sacParticle=SacParticle!B.get(ParticleType.dirt);
@@ -23961,66 +24159,87 @@ void animateEmergingCow(B)(ref BovineIntervention!B bovineIntervention,ObjectSta
 	addEmergingScar(bovineIntervention.spell,position,state); // original: BovineInterventionStart
 }
 Vector3f[2] emergingCowParticlesReach(B)(Vector3f position){ return grownBox(position,8.0f*(159)/updateFPS); }
-@particleLifetime(159) void emergingCowParticles(B)(Vector3f position,ParticleContext!B state){
+@particleLifetime(159) @particleTypes(ParticleType.rock,ParticleType.slowDust,ParticleType.dirt) void emergingCowParticles(B)(Vector3f position,ParticleContext!B state){
 	enum bovineInterventionSize=4.0f;
-	enum numParticles=64;
-	auto sacParticle=SacParticle!B.get(ParticleType.rock);
-	foreach(i;0..numParticles){
-		auto direction=state.uniformDirection();
-		auto velocity=state.uniform(2.0f,4.0f)*bovineInterventionSize/2.0f*direction;
-		velocity.z*=2.5f;
-		auto scale=2.0f*state.uniform(0.25f,0.75f);
-		auto lifetime=159;
-		auto frame=0;
-		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
-	}
-	enum numParticles4=16;
-	auto sacParticle4=SacParticle!B.get(ParticleType.slowDust);
-	foreach(i;0..numParticles4){
-		auto direction=state.uniformDirection();
-		auto pposition=position+0.75f*bovineInterventionSize/2.0f*direction;
-		auto velocity=0.6f*direction;
-		auto scale=3.0f*bovineInterventionSize/2.0f;
-		auto frame=0;
-		auto lifetime=127;
-		state.addParticle(Particle!B(sacParticle4,pposition,velocity,scale,lifetime,frame));
-	}
-	enum numParticles5=24;
-	auto sacParticle5=SacParticle!B.get(ParticleType.dirt);
-	auto sizeScale=1.5f*bovineInterventionSize;
-	auto departureDirection=Vector3f(0.0f,0.0f,1.0f);
-	foreach(i;0..numParticles5){
-		auto direction=state.uniformDirection();
-		auto pposition=position+sizeScale*0.25f*direction-sizeScale*Vector3f(0.0f,0.0f,state.uniform(0.0f,1.0f));
-		auto velocity=2.0f*sizeScale*departureDirection+0.75f*sizeScale*direction*state.uniform(0.5f,1.25f);
-		auto frame=state.uniform(2)?0:state.uniform(24);
-		auto lifetime=63-frame;
-		auto scale=sizeScale*state.uniform(0.5f,1.0f);
-		state.addParticle(Particle!B(sacParticle5,pposition,velocity,sizeScale,lifetime,frame));
+	switch(state.particleType){
+		case ParticleType.rock:{
+			enum numParticles=64;
+			auto sacParticle=SacParticle!B.get(ParticleType.rock);
+			foreach(i;0..numParticles){
+				auto direction=state.uniformDirection();
+				auto velocity=state.uniform(2.0f,4.0f)*bovineInterventionSize/2.0f*direction;
+				velocity.z*=2.5f;
+				auto scale=2.0f*state.uniform(0.25f,0.75f);
+				auto lifetime=159;
+				auto frame=0;
+				state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+			}
+			break;
+		}
+		case ParticleType.slowDust:{
+			enum numParticles4=16;
+			auto sacParticle4=SacParticle!B.get(ParticleType.slowDust);
+			foreach(i;0..numParticles4){
+				auto direction=state.uniformDirection();
+				auto pposition=position+0.75f*bovineInterventionSize/2.0f*direction;
+				auto velocity=0.6f*direction;
+				auto scale=3.0f*bovineInterventionSize/2.0f;
+				auto frame=0;
+				auto lifetime=127;
+				state.addParticle(Particle!B(sacParticle4,pposition,velocity,scale,lifetime,frame));
+			}
+			break;
+		}
+		case ParticleType.dirt:{
+			enum numParticles5=24;
+			auto sacParticle5=SacParticle!B.get(ParticleType.dirt);
+			auto sizeScale=1.5f*bovineInterventionSize;
+			auto departureDirection=Vector3f(0.0f,0.0f,1.0f);
+			foreach(i;0..numParticles5){
+				auto direction=state.uniformDirection();
+				auto pposition=position+sizeScale*0.25f*direction-sizeScale*Vector3f(0.0f,0.0f,state.uniform(0.0f,1.0f));
+				auto velocity=2.0f*sizeScale*departureDirection+0.75f*sizeScale*direction*state.uniform(0.5f,1.25f);
+				auto frame=state.uniform(2)?0:state.uniform(24);
+				auto lifetime=63-frame;
+				auto scale=sizeScale*state.uniform(0.5f,1.0f);
+				state.addParticle(Particle!B(sacParticle5,pposition,velocity,sizeScale,lifetime,frame));
+			}
+			break;
+		}
+		default: assert(0);
 	}
 }
 
 Vector3f[2] cowExplosionParticlesReach(B)(Vector3f position){ return grownBox(position,30.0f*(127)/updateFPS); }
-@particleLifetime(127) void cowExplosionParticles(B)(Vector3f position,ParticleContext!B state){
-	enum numParticles3=100;
-	auto sacParticle3=SacParticle!B.get(ParticleType.rock);
-	foreach(i;0..numParticles3){
-		auto pdirection=(state.uniformDirection()+Vector3f(0.0f,0.0f,0.5f)).normalized;
-		auto pvelocity=2.0f*state.uniform(7.5f,15.0f)*pdirection;
-		auto scale=state.uniform(1.0f,2.5f);
-		auto lifetime=127;
-		auto frame=0;
-		state.addParticle(Particle!B(sacParticle3,position,pvelocity,scale,lifetime,frame));
-	}
-	enum numParticles4=24;
-	auto sacParticle4=SacParticle!B.get(ParticleType.slowDust);
-	foreach(i;0..numParticles3){
-		auto pdirection=(state.uniformDirection()+Vector3f(0.0f,0.0f,0.5f)).normalized;
-		auto pvelocity=1.5f*pdirection*(1.0f-state.uniform(0.0f,1.0f)^^2);
-		auto scale=state.uniform(1.0f,2.5f);
-		auto lifetime=127;
-		auto frame=0;
-		state.addParticle(Particle!B(sacParticle4,position,pvelocity,scale,lifetime,frame));
+@particleLifetime(127) @particleTypes(ParticleType.rock,ParticleType.slowDust) void cowExplosionParticles(B)(Vector3f position,ParticleContext!B state){
+	enum numParticles3=100; // also the number of slowDust particles (numParticles4 is unused, as before)
+	switch(state.particleType){
+		case ParticleType.rock:{
+			auto sacParticle3=SacParticle!B.get(ParticleType.rock);
+			foreach(i;0..numParticles3){
+				auto pdirection=(state.uniformDirection()+Vector3f(0.0f,0.0f,0.5f)).normalized;
+				auto pvelocity=2.0f*state.uniform(7.5f,15.0f)*pdirection;
+				auto scale=state.uniform(1.0f,2.5f);
+				auto lifetime=127;
+				auto frame=0;
+				state.addParticle(Particle!B(sacParticle3,position,pvelocity,scale,lifetime,frame));
+			}
+			break;
+		}
+		case ParticleType.slowDust:{
+			enum numParticles4=24;
+			auto sacParticle4=SacParticle!B.get(ParticleType.slowDust);
+			foreach(i;0..numParticles3){
+				auto pdirection=(state.uniformDirection()+Vector3f(0.0f,0.0f,0.5f)).normalized;
+				auto pvelocity=1.5f*pdirection*(1.0f-state.uniform(0.0f,1.0f)^^2);
+				auto scale=state.uniform(1.0f,2.5f);
+				auto lifetime=127;
+				auto frame=0;
+				state.addParticle(Particle!B(sacParticle4,position,pvelocity,scale,lifetime,frame));
+			}
+			break;
+		}
+		default: assert(0);
 	}
 }
 void cowExplosion(B)(ref BovineIntervention!B bovineIntervention,ObjectState!B state){
@@ -24095,7 +24314,7 @@ bool updateCharmCasting(B)(ref CharmCasting!B charmCast,ObjectState!B state){
 	}
 }
 
-@particleLifetime(63) void charmSpiritParticles(B)(Vector3f oldPosition,Vector3f newPosition,ParticleContext!B state){
+@particleLifetime(63) @particleType(ParticleType.heart) void charmSpiritParticles(B)(Vector3f oldPosition,Vector3f newPosition,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.heart);
 	enum numParticles=1;
 	foreach(i;0..numParticles){
@@ -24174,7 +24393,7 @@ bool updateFlyingCharmSpirit(B)(ref CharmSpirit!B spirit,Vector3f position,Vecto
 }
 
 Vector3f[2] charmParticlesReach(B)(Vector3f[2] hitbox,float creatureScale){ return grownBox(hitbox,5.0f*creatureScale*(95)/updateFPS); }
-@particleLifetime(95) void charmParticles(B)(Vector3f[2] hitbox,float creatureScale,ParticleContext!B state){
+@particleLifetime(95) @particleType(ParticleType.bouncingHeart) void charmParticles(B)(Vector3f[2] hitbox,float creatureScale,ParticleContext!B state){
 	auto center=boxCenter(hitbox);
 	enum numParticles=128;
 	auto sacParticle=SacParticle!B.get(ParticleType.bouncingHeart);
@@ -24584,7 +24803,7 @@ void animateVolcanoAsh(B)(Vector3f position,int numParticles,ObjectState!B state
 	state.emitParticles!volcanoAshParticles(position,numParticles);
 }
 Vector3f[2] volcanoAshParticlesReach(B)(Vector3f position,int numParticles){ return grownBox(position,9.0f+0.3f*updateFPS*(179)/updateFPS); }
-@particleLifetime(179) void volcanoAshParticles(B)(Vector3f position,int numParticles,ParticleContext!B state){
+@particleLifetime(179) @particleType(ParticleType.volcanoAsh) void volcanoAshParticles(B)(Vector3f position,int numParticles,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.volcanoAsh);
 	foreach(i;0..numParticles){
 		auto angle=state.uniform!"[)"(0.0f,2*pi!float);
@@ -24961,7 +25180,7 @@ bool updateMeanstalks(B)(ref Meanstalks!B meanstalks,ObjectState!B state){
 	return meanstalks.numVines>0;
 }
 
-@particleLifetime(67) void tornadoCastingParticles(B)(int id,float k,float castingAnimationPhase,ParticleContext!B state){
+@particleLifetime(67) @particleType(ParticleType.tornadoCasting) void tornadoCastingParticles(B)(int id,float k,float castingAnimationPhase,ParticleContext!B state){
 	auto radius=2.5f*(1.0f+k);
 	auto theta=state.uniform!"[)"(0.0f,2.0f*pi!float);
 	auto offset=Vector3f(state.uniform!"[)"(-radius,radius)*sin(theta),state.uniform!"[)"(-radius,radius)*cos(theta),0.0f);
@@ -25066,7 +25285,7 @@ void animateTornadoDirt(B)(ref Tornado!B tornado,ObjectState!B state){
 		state.continueParticles!tornadoDirtParticles(tornado.particleEmitter,Vector3f(position.x,position.y,h),rate);
 	}
 }
-@particleLifetime(67) void tornadoDirtParticles(B)(Vector3f ground,float rate,ParticleContext!B state){
+@particleLifetime(67) @particleType(ParticleType.tornadoDirt) void tornadoDirtParticles(B)(Vector3f ground,float rate,ParticleContext!B state){
 	int numParticles=cast(int)rate;
 	if(state.uniform!"[)"(0.0f,1.0f)<rate-numParticles) numParticles+=1;
 	if(!numParticles) return;
@@ -25266,6 +25485,7 @@ bool updateLocustShoot(B)(ref LocustShoot!B shoot,ObjectState!B state){
 		return false;
 	}
 }
+int locustParticlesParticleGroup(B)(Vector3f position,Vector3f velocity,bool blood){ return particleGroup(blood?ParticleType.locustBlood:ParticleType.locustDebris); }
 @particleLifetime(31) void locustParticles(B)(Vector3f position,Vector3f velocity,bool blood,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(blood?ParticleType.locustBlood:ParticleType.locustDebris);
 	auto pvelocity=Vector3f(0,0,0),scale=1.0f,lifetime=31,frame=0;
@@ -25452,7 +25672,7 @@ int flameMinionProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f
 void flameEffect(B)(Vector3f position,ObjectState!B state,float scale=1.0f){
 	state.emitParticles!flameEffectParticles(position,scale);
 }
-@particleLifetime(63) void flameEffectParticles(B)(Vector3f position,float scale,ParticleContext!B state){
+@particleLifetime(63) @particleType(ParticleType.fire) void flameEffectParticles(B)(Vector3f position,float scale,ParticleContext!B state){
 	enum numParticles4=30;
 	auto sacParticle4=SacParticle!B.get(ParticleType.fire);
 	foreach(i;0..numParticles4){
@@ -25572,7 +25792,7 @@ void fallenProjectileHit(B)(ref FallenProjectile!B fallenProjectile,int target,O
 	state.emitParticles!fallenHitParticles(fallenProjectile.position);
 }
 Vector3f[2] fallenHitParticlesReach(B)(Vector3f position){ return grownBox(position,1.0f*(63)/updateFPS); }
-@particleLifetime(63) void fallenHitParticles(B)(Vector3f position,ParticleContext!B state){
+@particleLifetime(63) @particleType(ParticleType.swarmHit) void fallenHitParticles(B)(Vector3f position,ParticleContext!B state){
 	enum numParticles=32;
 	auto sacParticle=SacParticle!B.get(ParticleType.swarmHit);
 	foreach(i;0..numParticles){
@@ -25721,6 +25941,7 @@ int necrylProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f posi
 }
 
 // four particles at each of nSteps points along the path of a projectile in this frame
+int projectileTrailParticlesParticleGroup(B)(Vector3f oldPosition,Vector3f velocity,ParticleType type,int nSteps,float scale){ return particleGroup(type); }
 @particleLifetime(31) void projectileTrailParticles(B)(Vector3f oldPosition,Vector3f velocity,ParticleType type,int nSteps,float scale,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(type);
 	auto pvelocity=Vector3f(0,0,0),lifetime=31,frame=0;
@@ -25766,7 +25987,7 @@ bool updateNecrylProjectile(B)(ref NecrylProjectile!B necrylProjectile,ObjectSta
 }
 
 int poisonParticlesMaxLifetime(B)(int id,Vector3f[2] hitbox,int remaining){ return SacParticle!B.get(ParticleType.relativePoison).numFrames; }
-void poisonParticles(B)(int id,Vector3f[2] hitbox,int remaining,ParticleContext!B state){
+@particleType(ParticleType.relativePoison) void poisonParticles(B)(int id,Vector3f[2] hitbox,int remaining,ParticleContext!B state){
 	auto dim=hitbox[1]-hitbox[0];
 	auto volume=dim.x*dim.y*dim.z;
 	auto scale=2.0f*max(1.0f,cbrt(volume));
@@ -25831,6 +26052,7 @@ void animateScarabProjectileHit(B)(ref ScarabProjectile!B scarabProjectile,Vecto
 // particles that splash from a creature that is hit
 int hitSplashParticlesMaxLifetime(B)(Vector3f[2] hitbox,ParticleType type,int numParticles,float upwards,float minScale,float maxScale,int lifetime){ return lifetime; }
 Vector3f[2] hitSplashParticlesReach(B)(Vector3f[2] hitbox,ParticleType type,int numParticles,float upwards,float minScale,float maxScale,int lifetime){ return SacParticle!B.get(type).bumpOffGround?grownBox(hitbox,3.0f*0.5f*Vector2f((hitbox[1]-hitbox[0]).x,(hitbox[1]-hitbox[0]).y).length*(lifetime)/updateFPS):noReach; }
+int hitSplashParticlesParticleGroup(B)(Vector3f[2] hitbox,ParticleType type,int numParticles,float upwards,float minScale,float maxScale,int lifetime){ return particleGroup(type); }
 void hitSplashParticles(B)(Vector3f[2] hitbox,ParticleType type,int numParticles,float upwards,float minScale,float maxScale,int lifetime,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(type);
 	auto center=boxCenter(hitbox);
@@ -26265,27 +26487,36 @@ int flummoxProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f pos
 }
 
 Vector3f[2] flummoxExplosionParticlesReach(B)(Vector3f position){ return grownBox(position,20.0f*(95)/updateFPS); }
-@particleLifetime(95) void flummoxExplosionParticles(B)(Vector3f position,ParticleContext!B state){
-	enum numParticles3=100;
-	auto sacParticle3=SacParticle!B.get(ParticleType.rock);
-	foreach(i;0..numParticles3){
-		auto direction=state.uniformDirection();
-		auto velocity=state.uniform(10.0f,20.0f)*direction;
-		auto scale=state.uniform(1.0f,1.5f);
-		auto lifetime=95;
-		auto frame=0;
-		state.addParticle(Particle!B(sacParticle3,position,velocity,scale,lifetime,frame));
-	}
-	enum numParticles4=20;
-	auto sacParticle4=SacParticle!B.get(ParticleType.dirt);
-	foreach(i;0..numParticles4){
-		auto direction=state.uniformDirection();
-		auto pposition=position+direction;
-		auto velocity=Vector3f(0.0f,0.0f,0.0f);
-		auto scale=3.75f;
-		auto frame=state.uniform(2)?0:state.uniform(24);
-		auto lifetime=63-frame;
-		state.addParticle(Particle!B(sacParticle4,pposition,velocity,scale,lifetime,frame));
+@particleLifetime(95) @particleTypes(ParticleType.rock,ParticleType.dirt) void flummoxExplosionParticles(B)(Vector3f position,ParticleContext!B state){
+	switch(state.particleType){
+		case ParticleType.rock:{
+			enum numParticles3=100;
+			auto sacParticle3=SacParticle!B.get(ParticleType.rock);
+			foreach(i;0..numParticles3){
+				auto direction=state.uniformDirection();
+				auto velocity=state.uniform(10.0f,20.0f)*direction;
+				auto scale=state.uniform(1.0f,1.5f);
+				auto lifetime=95;
+				auto frame=0;
+				state.addParticle(Particle!B(sacParticle3,position,velocity,scale,lifetime,frame));
+			}
+			break;
+		}
+		case ParticleType.dirt:{
+			enum numParticles4=20;
+			auto sacParticle4=SacParticle!B.get(ParticleType.dirt);
+			foreach(i;0..numParticles4){
+				auto direction=state.uniformDirection();
+				auto pposition=position+direction;
+				auto velocity=Vector3f(0.0f,0.0f,0.0f);
+				auto scale=3.75f;
+				auto frame=state.uniform(2)?0:state.uniform(24);
+				auto lifetime=63-frame;
+				state.addParticle(Particle!B(sacParticle4,pposition,velocity,scale,lifetime,frame));
+			}
+			break;
+		}
+		default: assert(0);
 	}
 }
 void flummoxProjectileExplosion(B)(ref FlummoxProjectile!B flummoxProjectile,ObjectState!B state){
@@ -26354,7 +26585,7 @@ void styxSparkAnimation(int numSparks=192,B)(Vector3f[2] hitbox,ObjectState!B st
 	state.emitParticles!styxSparkParticles(hitbox,numSparks);
 }
 Vector3f[2] styxSparkParticlesReach(B)(Vector3f[2] hitbox,int numSparks){ return grownBox(scaleBox(hitbox,1.2f),5.0f*(95)/updateFPS); }
-@particleLifetime(95) void styxSparkParticles(B)(Vector3f[2] hitbox,int numSparks,ParticleContext!B state){
+@particleLifetime(95) @particleType(ParticleType.styxSpark) void styxSparkParticles(B)(Vector3f[2] hitbox,int numSparks,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.styxSpark);
 	auto center=boxCenter(hitbox);
 	foreach(i;0..numSparks){
@@ -26485,7 +26716,7 @@ enum pyromaniacRocketSlidingDistance=0.0f;
 void animatePyromaniacRocket(B)(ref PyromaniacRocket!B pyromaniacRocket,Vector3f oldPosition,ObjectState!B state){
 	state.continueParticles!pyromaniacRocketParticles(pyromaniacRocket.particleEmitter,oldPosition,pyromaniacRocket.position,pyromaniacRocket.direction);
 }
-@particleLifetime(47) void pyromaniacRocketParticles(B)(Vector3f oldPosition,Vector3f newPosition,Vector3f direction,ParticleContext!B state){
+@particleLifetime(47) @particleType(ParticleType.smoke) void pyromaniacRocketParticles(B)(Vector3f oldPosition,Vector3f newPosition,Vector3f direction,ParticleContext!B state){
 	enum numParticles=4;
 	auto sacParticle=SacParticle!B.get(ParticleType.smoke);
 	auto lifetime=47;
@@ -26605,7 +26836,7 @@ void mutantProjectileExplosion(B)(ref MutantProjectile!B mutantProjectile,int ta
 	}
 	state.emitParticles!splatParticles(mutantProjectile.position);
 }
-@particleLifetime(95) void splatParticles(B)(Vector3f splatPosition,ParticleContext!B state){
+@particleLifetime(95) @particleType(ParticleType.splat) void splatParticles(B)(Vector3f splatPosition,ParticleContext!B state){
 	enum numParticles4=20; // TODO: improve splat animation
 	auto sacParticle4=SacParticle!B.get(ParticleType.splat);
 	foreach(i;0..numParticles4){
@@ -26749,7 +26980,7 @@ void bombardProjectileExplosion(B)(ref BombardProjectile!B bombardProjectile,int
 	state.emitParticles!bombardExplosionParticles(bombardProjectile.position,bombardProjectile.rangedAttack.effectRange);
 }
 int bombardExplosionParticlesMaxLifetime(B)(Vector3f center,float range){ return 2*SacParticle!B.get(ParticleType.fire).numFrames; }
-void bombardExplosionParticles(B)(Vector3f center,float range,ParticleContext!B state){
+@particleType(ParticleType.fire) void bombardExplosionParticles(B)(Vector3f center,float range,ParticleContext!B state){
 	enum numParticles=80;
 	auto minScale=2.0f,maxScale=10.0f;
 	auto sacParticle=SacParticle!B.get(ParticleType.fire);
@@ -26797,7 +27028,7 @@ int flurryProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f posi
 	return collisionTarget!(flurryProjectileHitbox,filter)(side,position,state,side,intendedTarget);
 }
 
-@particleLifetime(63) void flurryImplosionParticles(B)(Vector3f position,ParticleContext!B state){
+@particleLifetime(63) @particleType(ParticleType.flurryShard) void flurryImplosionParticles(B)(Vector3f position,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.flurryShard);
 	enum numParticles=200;
 	foreach(i;0..numParticles){
@@ -26846,7 +27077,7 @@ bool updateFlurryProjectile(B)(ref FlurryProjectile!B flurryProjectile,ObjectSta
 }
 
 int flurryShardParticlesMaxLifetime(B)(Vector3f position,float implosionScale){ return cast(int)(max(15.0f,1.25f*implosionScale)*(updateFPS/30.0f))+1; }
-void flurryShardParticles(B)(Vector3f position,float implosionScale,ParticleContext!B state){
+@particleType(ParticleType.flurryShard) void flurryShardParticles(B)(Vector3f position,float implosionScale,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.flurryShard);
 	auto numParticles=cast(int)(3*implosionScale);
 	foreach(i;0..numParticles){
@@ -26958,7 +27189,7 @@ bool updateBoulderdashProjectile(B)(ref BoulderdashProjectile!B boulderdashProje
 enum initialSilverbackProjectileSize=4.0f;
 enum finalSilverbackProjectileSize=7.5f;
 int silverbackParticlesMaxLifetime(B)(Vector3f position,Vector3f direction,int frame,float speed_,float range){ return cast(int)(updateFPS*range/speed_); }
-void silverbackParticles(B)(Vector3f position,Vector3f direction,int frame,float speed_,float range,ParticleContext!B state){
+@particleType(ParticleType.freeze) void silverbackParticles(B)(Vector3f position,Vector3f direction,int frame,float speed_,float range,ParticleContext!B state){
 	auto numParticles=min(10,frame);
 	auto sacParticle=SacParticle!B.get(ParticleType.freeze);
 	foreach(i;0..numParticles){
@@ -27415,7 +27646,7 @@ bool updateDivineSight(B)(ref DivineSight!B divineSight,ObjectState!B state){
 	}
 }
 
-@particleLifetime(63) void steamCloudParticles(B)(Vector3f[2] hitbox,ParticleContext!B state){
+@particleLifetime(63) @particleType(ParticleType.steam) void steamCloudParticles(B)(Vector3f[2] hitbox,ParticleContext!B state){
 	enum numParticles2=100;
 	auto sacParticle2=SacParticle!B.get(ParticleType.steam);
 	auto scale=0.3f*boxSize(hitbox).length;
@@ -27437,7 +27668,7 @@ bool updateSteamCloud(B)(ref SteamCloud!B steamCloud,ObjectState!B state){
 	}
 }
 
-@particleLifetime(127) void poisonCloudParticles(B)(Vector3f[2] hitbox,Vector3f position,ParticleContext!B state){
+@particleLifetime(127) @particleType(ParticleType.poison) void poisonCloudParticles(B)(Vector3f[2] hitbox,Vector3f position,ParticleContext!B state){
 	enum numParticles2=50;
 	auto sacParticle2=SacParticle!B.get(ParticleType.poison);
 	auto scale=boxSize(hitbox).length;
@@ -27612,6 +27843,7 @@ void animateWebPullBreaking(B)(Vector3f[2] hitbox,ObjectState!B state){
 }
 // a web or cage breaks
 Vector3f[2] pullBreakingParticlesReach(B)(Vector3f[2] hitbox,ParticleType type,float minScale,float maxScale){ return SacParticle!B.get(type).bumpOffGround?grownBox(hitbox,15.0f*(95)/updateFPS):noReach; }
+int pullBreakingParticlesParticleGroup(B)(Vector3f[2] hitbox,ParticleType type,float minScale,float maxScale){ return particleGroup(type); }
 @particleLifetime(95) void pullBreakingParticles(B)(Vector3f[2] hitbox,ParticleType type,float minScale,float maxScale,ParticleContext!B state){
 	enum numParticles=64;
 	auto sacParticle=SacParticle!B.get(type);
@@ -27787,7 +28019,7 @@ int oilProjectileCollisionTarget(B)(Vector3f position,int creature,ObjectState!B
 }
 
 Vector3f[2] oilExplosionParticlesReach(B)(Vector3f position){ return grownBox(position,10.0f*(95)/updateFPS); }
-@particleLifetime(95) void oilExplosionParticles(B)(Vector3f position,ParticleContext!B state){
+@particleLifetime(95) @particleType(ParticleType.oil) void oilExplosionParticles(B)(Vector3f position,ParticleContext!B state){
 	enum numParticles3=100;
 	auto sacParticle3=SacParticle!B.get(ParticleType.oil);
 	foreach(i;0..numParticles3){
@@ -27907,7 +28139,7 @@ bool updateProtector(B)(ref Protector!B protector,ObjectState!B state){
 	return false;
 }
 
-@particleLifetime(93) void quakeParticles(B)(Vector3f position,ParticleContext!B state){
+@particleLifetime(93) @particleType(ParticleType.dirt) void quakeParticles(B)(Vector3f position,ParticleContext!B state){
 	enum numParticles3=64;
 	auto sacParticle3=SacParticle!B.get(ParticleType.dirt);
 	foreach(i;0..numParticles3){
@@ -27955,7 +28187,7 @@ bool updateQuake(B)(ref Quake!B quake,ObjectState!B state){
 	}
 }
 
-@particleLifetime(63) void firewalkFlameParticles(B)(Vector3f position,ParticleContext!B state){
+@particleLifetime(63) @particleType(ParticleType.fire) void firewalkFlameParticles(B)(Vector3f position,ParticleContext!B state){
 	enum numParticles4=6;
 	auto sacParticle4=SacParticle!B.get(ParticleType.fire);
 	foreach(i;0..numParticles4){
@@ -27984,7 +28216,7 @@ void animateFirewalk(B)(ref MovingObject!B object,ObjectState!B state){
 	state.emitParticles!firewalkParticles(object.hitbox);
 }
 int firewalkParticlesMaxLifetime(B)(Vector3f[2] hitbox){ return SacParticle!B.get(ParticleType.fire).numFrames; }
-void firewalkParticles(B)(Vector3f[2] hitbox,ParticleContext!B state){
+@particleType(ParticleType.fire) void firewalkParticles(B)(Vector3f[2] hitbox,ParticleContext!B state){
 	enum numParticles=32;
 	auto dim=hitbox[1]-hitbox[0];
 	auto volume=dim.x*dim.y*dim.z;
@@ -28056,7 +28288,7 @@ void rendSparkAnimation(int numSparks=192,B)(Vector3f targetPosition,ObjectState
 	state.emitParticles!rendSparkParticles(targetPosition,numSparks);
 }
 Vector3f[2] rendSparkParticlesReach(B)(Vector3f targetPosition,int numSparks){ return grownBox(targetPosition,0.6f+15.0f*(95)/updateFPS); }
-@particleLifetime(95) void rendSparkParticles(B)(Vector3f targetPosition,int numSparks,ParticleContext!B state){
+@particleLifetime(95) @particleType(ParticleType.rend) void rendSparkParticles(B)(Vector3f targetPosition,int numSparks,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.rend);
 	Vector3f[2] hitbox=[targetPosition-0.5f,targetPosition+0.5];
 	auto center=boxCenter(hitbox);
@@ -28100,7 +28332,7 @@ void animateBreathOfLifeHead(B)(ref BreathOfLife!B breathOfLife,Vector3f velocit
 	state.continueParticles!breathOfLifeHeadParticles(breathOfLife.particleEmitter,breathOfLife.position,velocity,numFrames);
 }
 int breathOfLifeHeadParticlesMaxLifetime(B)(Vector3f headPosition,Vector3f velocity,int numFrames){ return numFrames; }
-void breathOfLifeHeadParticles(B)(Vector3f headPosition,Vector3f velocity,int numFrames,ParticleContext!B state){
+@particleType(ParticleType.breathOfLife) void breathOfLifeHeadParticles(B)(Vector3f headPosition,Vector3f velocity,int numFrames,ParticleContext!B state){
 	enum numParticles=20;
 	foreach(i;0..numParticles){
 		auto sacParticle=SacParticle!B.get(ParticleType.breathOfLife);
@@ -28117,7 +28349,7 @@ void animateBreathOfLife(B)(ref BreathOfLife!B breathOfLife,Vector3f velocity,Ob
 	state.continueParticles!breathOfLifeParticles(breathOfLife.particleEmitter2,breathOfLife.position,velocity);
 	animateBreathOfLifeHead(breathOfLife,velocity,state,min(31,cast(int)((breathOfLife.position-breathOfLife.target.position).length/breathOfLife.spell.speed*updateFPS)));
 }
-@particleLifetime(63) void breathOfLifeParticles(B)(Vector3f headPosition,Vector3f velocity,ParticleContext!B state){
+@particleLifetime(63) @particleType(ParticleType.breathOfLife) void breathOfLifeParticles(B)(Vector3f headPosition,Vector3f velocity,ParticleContext!B state){
 	enum numParticles=5;
 	foreach(i;0..numParticles){
 		auto sacParticle=SacParticle!B.get(ParticleType.breathOfLife);
@@ -28141,7 +28373,7 @@ bool animateBreathOfLifeReviving(B)(ref MovingObject!B obj,ObjectState!B state){
 	return true;
 }
 int breathOfLifeRevivingParticlesMaxLifetime(B)(int id,Vector3f[2] hitbox){ return SacParticle!B.get(ParticleType.relativeHeal).numFrames; }
-void breathOfLifeRevivingParticles(B)(int id,Vector3f[2] hitbox,ParticleContext!B state){
+@particleType(ParticleType.relativeHeal) void breathOfLifeRevivingParticles(B)(int id,Vector3f[2] hitbox,ParticleContext!B state){
 	static assert(updateFPS==60);
 	auto dim=hitbox[1]-hitbox[0];
 	auto volume=dim.x*dim.y*dim.z;
@@ -29856,17 +30088,21 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	}
 }
 
-@particleLifetime(31) void explosionParticles(B)(Vector3f position,ParticleContext!B state){
-	enum numParticles=200;
-	auto sacParticle1=SacParticle!B.get(ParticleType.explosion);
-	auto sacParticle2=SacParticle!B.get(ParticleType.explosion2);
-	foreach(i;0..numParticles){
-		auto direction=state.uniformDirection();
-		auto velocity=state.uniform(1.5f,6.0f)*direction;
-		auto scale=1.0f;
-		auto lifetime=31;
-		auto frame=0;
-		state.addParticle(Particle!B(i<numParticles/2?sacParticle1:sacParticle2,position,velocity,scale,lifetime,frame));
+@particleLifetime(31) @particleTypes(ParticleType.explosion,ParticleType.explosion2) void explosionParticles(B)(Vector3f position,ParticleContext!B state){
+	enum numParticles=200; // half of them of each type
+	switch(state.particleType){
+		case ParticleType.explosion,ParticleType.explosion2:
+			auto sacParticle=SacParticle!B.get(state.particleType);
+			foreach(i;0..numParticles/2){
+				auto direction=state.uniformDirection();
+				auto velocity=state.uniform(1.5f,6.0f)*direction;
+				auto scale=1.0f;
+				auto lifetime=31;
+				auto frame=0;
+				state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+			}
+			break;
+		default: assert(0);
 	}
 }
 
@@ -29893,7 +30129,7 @@ void animateAsh(B)(Vector3f position,ObjectState!B state,int numParticles=300){
 	state.emitParticles!ashParticles(position,numParticles);
 }
 Vector3f[2] ashParticlesReach(B)(Vector3f position,int numParticles){ return grownBox(position,30.0f*(95)/updateFPS); }
-@particleLifetime(95) void ashParticles(B)(Vector3f position,int numParticles,ParticleContext!B state){
+@particleLifetime(95) @particleType(ParticleType.ashParticle) void ashParticles(B)(Vector3f position,int numParticles,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.ashParticle);
 	foreach(i;0..numParticles){
 		auto direction=state.uniformDirection();
@@ -30026,7 +30262,7 @@ void animateManafount(B)(Vector3f location, ObjectState!B state, ref int emitter
 	state.continueParticles!manafountParticles(emitter,location);
 }
 int manafountParticlesMaxLifetime(B)(Vector3f location){ return 5*SacParticle!B.get(ParticleType.manafount).numFrames; }
-void manafountParticles(B)(Vector3f location, ParticleContext!B state){
+@particleType(ParticleType.manafount) void manafountParticles(B)(Vector3f location, ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.manafount);
 	auto globalAngle=1.5f*2*pi!float/updateFPS*(state.frame+1000*location.x+location.y);
 	auto globalMagnitude=0.25f;
@@ -30055,6 +30291,7 @@ void animateManalith(B)(Vector3f location, int side, ObjectState!B state, ref in
 	state.continueParticles!manalithParticles(emitter,location,side);
 }
 int manalithParticlesMaxLifetime(B)(Vector3f location, int side){ return 5*SacParticle!B.get(ParticleType.manalith).numFrames; }
+int manalithParticlesParticleGroup(B)(Vector3f location, int side){ return particleGroup(ParticleType.manalith,side); }
 void manalithParticles(B)(Vector3f location, int side, ParticleContext!B state){
 	auto sacParticle=state.sides.manaParticle(side);
 	auto globalAngle=2*pi!float/updateFPS*(state.frame+1000*location.x+location.y);
@@ -30080,6 +30317,7 @@ void animateShrine(B)(bool active,Vector3f location, int side, ObjectState!B sta
 	state.continueParticles!shrineParticles(emitter,active,location,side);
 }
 int shrineParticlesMaxLifetime(B)(bool active,Vector3f location, int side){ return 10*SacParticle!B.get(ParticleType.shrine).numFrames; }
+int shrineParticlesParticleGroup(B)(bool active,Vector3f location, int side){ return particleGroup(ParticleType.shrine,side); }
 void shrineParticles(B)(bool active,Vector3f location, int side, ParticleContext!B state){
 	auto sacParticle=state.sides.shrineParticle(side);
 	auto globalAngle=2*pi!float/updateFPS*(state.frame+1000*location.x+location.y);
@@ -30149,7 +30387,7 @@ bool magnifryerCandidateValid(B)(ref CenterProximityEntry entry,Vector3f muzzle,
 }
 
 int beamEndParticlesMaxLifetime(B)(Vector3f beamEnd){ return SacParticle!B.get(ParticleType.firy).numFrames; }
-void beamEndParticles(B)(Vector3f beamEnd,ParticleContext!B state){
+@particleType(ParticleType.firy) void beamEndParticles(B)(Vector3f beamEnd,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.firy);
 	enum numParticles=2;
 	foreach(i;0..numParticles){
@@ -30296,6 +30534,7 @@ void animateManahoar(B)(Vector3f location, int side, float rate, ObjectState!B s
 	state.emitParticles!manahoarParticles(location,side,rate);
 }
 int manahoarParticlesMaxLifetime(B)(Vector3f location, int side, float rate){ return cast(int)ceil(3.5f*SacParticle!B.get(ParticleType.manahoar).numFrames); }
+int manahoarParticlesParticleGroup(B)(Vector3f location, int side, float rate){ return particleGroup(ParticleType.manahoar,side); }
 void manahoarParticles(B)(Vector3f location, int side, float rate, ParticleContext!B state){
 	auto sacParticle=state.sides.manahoarParticle(side);
 	auto globalAngle=2*pi!float/updateFPS*state.frame;
