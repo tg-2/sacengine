@@ -4,3 +4,6 @@
 [submodule "dlib"]
 	path = dlib
 	url = ../dlib
+[submodule "xmas"]
+	path = mods/xmas
+	url = ../sacengine-xmas
