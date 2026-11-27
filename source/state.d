@@ -4104,7 +4104,7 @@ struct ChainLightning(B){
 		return false;
 	}
 	bool hasTarget(int id){ return id&&targets[].canFind(id); }
-	enum travelFrames=20;
+	enum travelFrames=15; // original: next bolt 0.25s after the previous one hits (0x4355a0, 0x420220)
 }
 
 struct AnimateDeadCasting(B){
@@ -20517,13 +20517,10 @@ bool updateChainLightningCastingEffect(B)(ref ChainLightningCastingEffect!B cast
 	}
 }
 
-OrderTarget newChainLightningTarget(B)(OrderTarget last,OrderTarget current,SacSpell!B spell,ObjectState!B state){
-	auto position=2.0f*current.position-last.position;
-	float limit=state.uniform(0.25f,1.0f)*spell.effectRange;
-	auto offset=1.5f*limit*state.uniform(0.0f,1.0f)*state.uniformDirection!(float,2)();
-	position.x+=offset.x, position.y+=offset.y;
-	if((position-current.position).lengthsqr>limit^^2)
-		position=current.position+(position-current.position).normalized*limit;
+OrderTarget newChainLightningTarget(B)(OrderTarget current,float range,ObjectState!B state){
+	auto position=current.position; // original: uniform in square of side 2*range (0x420145)
+	position.x+=state.uniform(-range,range);
+	position.y+=state.uniform(-range,range);
 	position.z=state.getHeight(position); // TODO: avoid void?
 	return OrderTarget(TargetType.terrain,0,position);
 }
@@ -20550,14 +20547,15 @@ bool updateChainLightning(B)(ref ChainLightning!B chainLightning,ObjectState!B s
 			if(current.id) addTarget(current.id);
 			if(++numTargets>=totTargets)
 				return false;
+			auto range=float(totTargets-numTargets)/(totTargets-1)*spell.effectRange; // original: shrinks with every jump (0x420070)
 			static bool filter(ref CenterProximityEntry entry,ObjectState!B state,ChainLightning!B* chainLightning){
 				if(state.movingObjectById!((ref obj,state)=>obj.health(state)==0.0f,()=>true)(entry.id,state)) return false;
 				return !chainLightning.hasTarget(entry.id);
 			}
-			int newTarget=state.proximity.closestEnemyInRange!filter(side,current.position,spell.effectRange,EnemyType.creature,state,float.infinity,state,&chainLightning);
+			int newTarget=state.proximity.closestEnemyInRange!filter(side,current.position,range,EnemyType.creature,state,float.infinity,state,&chainLightning);
 			OrderTarget next;
 			if(newTarget) next=OrderTarget(TargetType.creature,newTarget,state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(newTarget));
-			if(isNaN(next.position.x)) next=newChainLightningTarget(last,current,spell,state);
+			if(isNaN(next.position.x)) next=newChainLightningTarget(current,range,state);
 			last=current;
 			current=next;
 			frame=0;
