@@ -9,6 +9,8 @@
 	
 	"buildRequirements": ["requireBoundsCheck","requireContracts"],
 	"stringImportPaths": [".git"],
+	"sourcePaths": ["source", "mods/xmas/source"],
+	"importPaths": ["source", "mods/xmas/source"],
 
 	"dependencies": {
 		"derelict-ft": "~>2.0.0-beta.2",

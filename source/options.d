@@ -44,6 +44,8 @@ struct Options{
 	int cursorSize=-1;
 	bool freetypeFonts=true;
 	bool printFps=false;
+	// Client-only cosmetic; never included in network or simulation settings.
+	bool localChristmas=false;
 	// audio options
 	float volume=1.0f;
 	float musicVolume=1.0f;
