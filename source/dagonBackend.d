@@ -17,6 +17,8 @@ import renderer,audioBackend;
 import frameprof;
 import loading: loadingStatus, loadingScreenSample;
 import bots.shiny: SideType;
+import mods : activeMods;
+import saxs : Saxs;
 
 final class SacScene: Scene{
 	//OBJAsset aOBJ;
@@ -189,6 +191,7 @@ final class SacScene: Scene{
 		if(!state) return;
 		typeof(renderer).R3DOpt r3dopt={enableWidgets: options.enableWidgets, enableBloodStains: options.enableBloodStains, enableScars: options.enableScars, committedFrame: state.committedFrame};
 		renderer.renderShadowCastingEntities3D(r3dopt,state.current,info,rc);
+		foreach(mod;activeMods) mod.drawShadowCasters(this,rc);
 	}
 
 	override void renderOpaqueEntities3D(RenderingContext* rc){
@@ -205,6 +208,7 @@ final class SacScene: Scene{
 		if(!state) return;
 		typeof(renderer).R3DOpt r3dopt={enableWidgets: options.enableWidgets, enableBloodStains: options.enableBloodStains, enableScars: options.enableScars, committedFrame: state.committedFrame};
 		renderer.renderOpaqueEntities3D(r3dopt,state.current,info,rc);
+		foreach(mod;activeMods) mod.drawOpaque(this,rc);
 	}
 	override void renderTransparentEntities3D(RenderingContext* rc){
 		scope(exit) frameprof.markRender("transparent");
@@ -212,12 +216,15 @@ final class SacScene: Scene{
 		if(!state) return;
 		typeof(renderer).R3DOpt r3dopt={enableWidgets: options.enableWidgets, enableBloodStains: options.enableBloodStains, enableScars: options.enableScars, committedFrame: state.committedFrame};
 		renderer.renderTransparentEntities3D(r3dopt,state.current,info,rc);
+		foreach(mod;activeMods) mod.drawTransparent(this,rc);
 	}
 	override void renderEntities2D(RenderingContext* rc){
 		scope(exit) frameprof.markRender("hud");
 		super.renderEntities2D(rc);
 		updateMouse();
 		info.fps=eventManager.fps;
+		info.statusLabel=null;
+		foreach(mod;activeMods) if(auto label=mod.statusLabel(this)){ info.statusLabel=label; break; }
 		info.loadingScreenVisible=loadingScreenVisible();
 		info.gameBlackedOut=loadingStatus.initializingGame||!state&&(lobbyNetwork||lobbyVisible); // (also while waiting for the game start)
 		info.loadingProgress=loadingStatus.progress;
@@ -249,6 +256,7 @@ final class SacScene: Scene{
 				if(audio.nextTheme==Theme.none) audio.switchTheme(Theme.normal); // (after the lobby music)
 			}
 		}
+		foreach(mod;activeMods) mod.stateChanged(this);
 	}
 
 	void setController(Controller!DagonBackend controller)in{
@@ -281,6 +289,7 @@ final class SacScene: Scene{
 
 	override void onAllocate(){
 		super.onAllocate();
+		foreach(mod;activeMods) mod.allocate(this);
 
 		ssao.enabled=options.enableSSAO;
 		deferredEnvPass.enableNttLighting=options.enableNttLighting;
@@ -380,6 +389,7 @@ final class SacScene: Scene{
 		camera.distance=max(camera.distance,4.5f);
 		camera.floatingHeight=1.75f*height-1.15f;
 		camera.focusHeight=camera.floatingHeight-0.3f*(height-1.0f);
+		foreach(mod;activeMods) mod.followCamera(this,target);
 		updateCameraPosition(Duration.zero,true,false);
 	}
 
@@ -982,6 +992,7 @@ final class SacScene: Scene{
 
 	void control(Duration dt){
 		foreach(_;0..keyDown[KEY_F8]) info.fpsVisible=!info.fpsVisible;
+		foreach(mod;activeMods) mod.control(this,dt);
 		if(loadingScreenControl()){
 			keyDown[]=0;
 			keyUp[]=0;
@@ -2748,6 +2759,7 @@ final class SacScene: Scene{
 		else if(audio&&(lobbyVisible||audio.currentTheme==Theme.menu)) audio.updateTheme(dt); // (lobby music, until it has faded out)
 		updateCursor(dt);
 		updateTriggerProjection();
+		foreach(mod;activeMods) mod.update(this,dt);
 		super.onUpdate(dt);
 	}
 	bool mouseTargetValid(Target target){
@@ -3314,6 +3326,22 @@ static:
 
 	@property TerrainBackend2 terrainMaterialBackend(){ return scene.terrainMaterialBackend; }
 	@property TerrainShadowBackend terrainShadowBackend(){ return scene.shadowMap.tsb; }
+	// Optional mods (mods.d), reached by the backend-generic renderer and model loader.
+	GeometryPassBackend modSceneryBackend(){
+		foreach(mod;activeMods) if(auto backend=mod.sceneryBackend()) return backend;
+		return null;
+	}
+	void modTerrainTexture(SacMap!DagonBackend map,int tile,bool scarred=false){
+		foreach(mod;activeMods) mod.terrainTexture(map,tile,scarred);
+	}
+	void modCreatures(bool opaquePass,ObjectState!DagonBackend state,ref RenderInfo!DagonBackend info,RenderContext rc,
+		ref CreatureOverride!DagonBackend[] overrides){
+		foreach(mod;activeMods) mod.creatures(opaquePass,state,info,rc,overrides);
+	}
+	bool modsActive(){ return activeMods.length!=0; }
+	void modModelLoaded(char[4] tag,char[4] model,ref Saxs!DagonBackend saxs){
+		foreach(mod;activeMods) mod.modelLoaded(tag,model,saxs);
+	}
 
 	void setTerrainTransformation(Vector3f position,Quaternionf rotation,RenderContext rc){
 		terrainMaterialBackend.setModelTransformation(position,rotation,rc);
@@ -3441,6 +3469,7 @@ static:
 				mat.emission=diffuse;
 				mat.energy=0.5f;
 			}
+			foreach(mod;activeMods) mod.materialCreated(sobj,mat);
 			materials[i]=mat;
 		}
 		return materials;

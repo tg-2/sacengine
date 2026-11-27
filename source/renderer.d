@@ -6,7 +6,7 @@ import dlib.math.portable;
 import dlib.math.vector, dlib.math.matrix, dlib.math.quaternion, dlib.math.transformation, dlib.math.utils: Axis, degtorad;
 import dlib.image.color;
 import std.stdio;
-import std.algorithm: min, max, among, map, filter, all, splitter, swap;
+import std.algorithm: min, max, among, map, filter, all, splitter, swap, countUntil;
 import std.range: iota, walkLength, enumerate;
 import std.typecons: tuple, Tuple;
 import std.conv: to;
@@ -161,6 +161,7 @@ struct RenderInfo(B){
 	auto spellbookTab=SpellType.creature;
 	ActiveChatMessages activeChatMessages;
 	bool fpsVisible=false; // toggled with F8
+	string statusLabel; // short text from a mod (mods.d), shown under the FPS box
 	int fps=0;
 	float startCountdownProgress=float.nan; // loading bar before the synchronized game start (NaN: hidden)
 	bool loadingScreenVisible=false;
@@ -175,6 +176,17 @@ struct RenderInfo(B){
 		float progress=0.0f;
 	}
 	Array!SynchronizationRow synchronizationRows; // one per slot, empty: synchronization form hidden
+}
+
+/// How a mod (mods.d) changes the drawing of one creature in a pass: the mod
+/// drew it itself, or it is drawn with these meshes and materials instead of
+/// its own, keeping its pose and effects.
+struct CreatureOverride(B){
+	int id;
+	SacObject!B sacObject;
+	bool skip;
+	B.BoneMesh[] meshes;
+	B.Material[] opaqueMaterials,transparentMaterials,shadowMaterials;
 }
 
 struct Renderer(B){
@@ -1319,6 +1331,7 @@ struct Renderer(B){
 					B.terrainMaterialBackend.bindDetail(map.details[map.dti[i]]);
 				}else B.terrainMaterialBackend.bindDetail(null);
 				B.terrainMaterialBackend.bindEmission(map.textures[i]);
+				static if(__traits(hasMember,B,"modTerrainTexture")) B.modTerrainTexture(map,cast(int)i);
 			}
 			mesh.render(rc);
 		}
@@ -1331,6 +1344,7 @@ struct Renderer(B){
 				if(baseTile<map.dti.length) B.terrainMaterialBackend.bindDetail(map.details[map.dti[baseTile]]);
 				else B.terrainMaterialBackend.bindDetail(null);
 				B.terrainMaterialBackend.bindEmission(texture);
+				static if(__traits(hasMember,B,"modTerrainTexture")) B.modTerrainTexture(map,baseTile,true);
 			}
 			mesh.render(rc);
 		}
@@ -1339,6 +1353,7 @@ struct Renderer(B){
 				B.terrainMaterialBackend.bindDiffuse(map.textures[edgeIndex]);
 				B.terrainMaterialBackend.bindDetail(null);
 				B.terrainMaterialBackend.bindEmission(map.textures[edgeIndex]);
+				static if(__traits(hasMember,B,"modTerrainTexture")) B.modTerrainTexture(map,-1);
 			}
 			map.dynamicEdgeMesh.render(rc);
 		}
@@ -1369,6 +1384,7 @@ struct Renderer(B){
 						if(texture<map.dti.length) B.terrainMaterialBackend.bindDetail(map.details[map.dti[texture]]);
 						else B.terrainMaterialBackend.bindDetail(null);
 						B.terrainMaterialBackend.bindEmission(diffuse);
+						static if(__traits(hasMember,B,"modTerrainTexture")) B.modTerrainTexture(map,texture,diffuse !is map.textures[texture]);
 						topMesh.render(rc);
 					}
 					foreach(q;0..4){
@@ -1377,12 +1393,14 @@ struct Renderer(B){
 						B.terrainMaterialBackend.bindDiffuse(map.textures[bottomIndex]);
 						B.terrainMaterialBackend.bindDetail(null);
 						B.terrainMaterialBackend.bindEmission(map.textures[bottomIndex]);
+						static if(__traits(hasMember,B,"modTerrainTexture")) B.modTerrainTexture(map,-1);
 						bottomMesh.render(rc);
 					}
 					if(cached.edgeMesh){
 						B.terrainMaterialBackend.bindDiffuse(map.textures[edgeIndex]);
 						B.terrainMaterialBackend.bindDetail(null);
 						B.terrainMaterialBackend.bindEmission(map.textures[edgeIndex]);
+						static if(__traits(hasMember,B,"modTerrainTexture")) B.modTerrainTexture(map,-1);
 						cached.edgeMesh.render(rc);
 					}
 				}else{
@@ -1435,8 +1453,17 @@ struct Renderer(B){
 		int committedFrame=-1; // scars of later frames may still be rolled back
 	}
 
+	private CreatureOverride!B[] creatureOverrides;
+	private int[] replacedCreatures;
+
 	void renderNTTs(RenderMode mode)(R3DOpt options,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
-		static void render(T)(ref T objects,Renderer!B* self,bool enableWidgets,ObjectState!B state,RenderInfo!B* info,B.RenderContext rc,bool onlyOpaqueEffects=false){ // TODO: why does this need to be static? DMD bug?
+		// Mods (mods.d) may draw some creatures themselves or change their meshes.
+		auto overrides=creatureOverrides;
+		overrides.length=0;overrides.assumeSafeAppend();
+		static if(__traits(hasMember,B,"modCreatures")) B.modCreatures(mode==RenderMode.opaque,state,info,rc,overrides);
+		creatureOverrides=overrides;
+
+		static void render(T)(ref T objects,Renderer!B* self,bool enableWidgets,ObjectState!B state,RenderInfo!B* info,B.RenderContext rc,CreatureOverride!B[] overrides,bool onlyOpaqueEffects=false){ // TODO: why does this need to be static? DMD bug?
 			static if(is(typeof(objects.sacObject))){
 				auto sacObject=objects.sacObject;
 				enum isMoving=is(T==MovingObjects!(B, renderMode), RenderMode renderMode);
@@ -1459,8 +1486,37 @@ struct Renderer(B){
 					auto opaqueMaterials=rc.shadowMode?sacObject.shadowMaterials:sacObject.materials;
 					auto materials=rc.shadowMode?sacObject.shadowMaterials:sacObject.transparentMaterials;
 				}else static assert(0);
-				foreach(i;0..materials.length){
-					auto material=materials[i];
+				B.Material[] replacementMaterials;
+				static if(isMoving){
+					// Creatures of this model changed by a mod: skipped when the mod drew
+					// them, otherwise drawn with its meshes and materials (one set per model).
+					bool changedModel=false;
+					foreach(ref change;overrides) if(change.sacObject is sacObject) changedModel=true;
+					static bool changed(CreatureOverride!B[] overrides,int id){
+						foreach(ref change;overrides) if(change.id==id) return true;
+						return false;
+					}
+					B.BoneMesh[] replacementMeshes;
+					auto replaced=self.replacedCreatures;
+					replaced.length=0;replaced.assumeSafeAppend();
+					if(changedModel){
+						foreach(ref change;overrides){
+							if(change.sacObject !is sacObject || change.skip) continue;
+							auto index=cast(int)objects.ids.data.countUntil(change.id);
+							if(index<0) continue;
+							if(!replaced.length){
+								replacementMeshes=change.meshes;
+								replacementMaterials=rc.shadowMode?change.shadowMaterials:
+									prepareMaterials==RenderMode.opaque?change.opaqueMaterials:change.transparentMaterials;
+							}
+							replaced~=index;
+						}
+					}
+					self.replacedCreatures=replaced;
+				}
+				foreach(i;0..materials.length+replacementMaterials.length){
+					bool replacementPart=i>=materials.length;
+					auto material=replacementPart?replacementMaterials[i-materials.length]:materials[i];
 					if(!material) continue;
 					auto blending=B.blending(material);
 					if((mode==RenderMode.transparent)!=(blending==B.Blending.Additive||blending==B.Blending.Transparent)) continue;
@@ -1471,15 +1527,26 @@ struct Renderer(B){
 						else material.backend=B.buildingSummonMaterialBackend2;
 						scope(success) material.backend=originalBackend;
 					}
+					static if((isStatic||isFixed)&&objects.renderMode==RenderMode.opaque){
+						auto originalBackend=material.backend;
+						static if(__traits(hasMember,B,"modSceneryBackend")){
+							if(!rc.shadowMode && originalBackend is B.defaultMaterialBackend)
+								if(auto backend=B.modSceneryBackend) material.backend=backend;
+						}
+						scope(success) material.backend=originalBackend;
+					}
 					material.bind(rc);
 					scope(success) material.unbind(rc);
 					static if(isMoving){
 						bool fasterStandupTimes=state.fasterStandupTimes;
-						auto mesh=sacObject.saxsi.meshes[i];
-						foreach(j;0..objects.length){ // TODO: use instanced rendering instead
+						auto mesh=replacementPart?replacementMeshes[i-materials.length]:sacObject.saxsi.meshes[i];
+						auto count=replacementPart?replaced.length:objects.length;
+						foreach(k;0..count){ // TODO: use instanced rendering instead
+							auto j=replacementPart?replaced[k]:cast(int)k;
+							auto id=objects.ids[j];
+							if(!replacementPart && changedModel && changed(overrides,id)) continue;
 							if(rc.shadowMode&&objects.creatureStatss[j].effects.stealth) continue;
 							material.backend.setTransformationScaled(objects.positions[j], objects.rotations[j], objects.scales[j]*Vector3f(1.0f,1.0f,1.0f), rc);
-							auto id=objects.ids[j];
 							Vector4f information;
 							if(info.renderSide!=objects.sides[j]&&objects.creatureStates[j].mode.isGhost) continue;
 							if(state.fogOfWar3d&&info.renderSide!=objects.sides[j]&&!state.positionVisibleToSide(info.renderSide,objects.positions[j])) continue;
@@ -3911,7 +3978,7 @@ struct Renderer(B){
 			}else static assert(0);
 		}
 		with(EachByTypeFlags)
-			state.eachByType!(render,movingFirst|particlesBeforeEffects|opaqueEffectsBeforeParticles)(&this,options.enableWidgets,state,&info,rc);
+			state.eachByType!(render,movingFirst|particlesBeforeEffects|opaqueEffectsBeforeParticles)(&this,options.enableWidgets,state,&info,rc,creatureOverrides);
 	}
 
 	bool selectionUpdated=false;
@@ -5204,6 +5271,28 @@ struct Renderer(B){
 		unbindFont(font,rc);
 	}
 
+	void renderStatusLabel(ref RenderInfo!B info,B.RenderContext rc){
+		if(!info.statusLabel.length) return;
+		auto font=SacFont!B.get(FontType.fndb);
+		auto hudScaling=info.hudScaling;
+		FormatSettings settings={flowType:FlowType.left, scale:hudScaling};
+		auto textSize=font.getSize(info.statusLabel,settings);
+		enum borderSize=8.0f;
+		auto size=Vector2f(textSize.x+2.0f*borderSize*hudScaling,12.0f*hudScaling);
+		auto upperLeft=Vector3f(4.0f*hudScaling,(info.fpsVisible?20.0f:4.0f)*hudScaling,0.0f); // below the FPS box
+		B.colorHUDMaterialBackend.bind(null,rc);
+		B.colorHUDMaterialBackend.bindDiffuse(whiteTexture);
+		B.colorHUDMaterialBackend.setColor(Color4f(0.0f,0.0f,0.0f,0.68f));
+		B.colorHUDMaterialBackend.setTransformationScaled(upperLeft,Quaternionf.identity(),Vector3f(size.x,size.y,0.0f),rc);
+		quad.render(rc);
+		B.colorHUDMaterialBackend.unbind(null,rc);
+		auto textPos=upperLeft+Vector3f(borderSize*hudScaling,2.0f*hudScaling,0.0f);
+		bindFont(font,rc);
+		setFontColor(font,Color4f(1.0f,1.0f,1.0f,1.0f));
+		drawText(font,info.statusLabel,textPos.x,textPos.y,settings,info,rc);
+		unbindFont(font,rc);
+	}
+
 	// text split into lines at \n and between words to fit into width (form units), each line centered
 	// text broken into lines at '\n' and between words to fit into width, each line centered horizontally, and the lines centered vertically within height (as the original does for the loading screen description)
 	void drawCenteredText(SacFont!B font,const(char)[] text,float left,float top,float width,float height,float scale,ref RenderInfo!B info,B.RenderContext rc){
@@ -6389,6 +6478,7 @@ struct Renderer(B){
 			renderSynchronizationForm(info,rc);
 			renderChatMessages(state,networkState,info,rc);
 			renderFPS(info,rc);
+			renderStatusLabel(info,rc);
 			renderStartCountdown(info,rc);
 			renderForms(forms,info,rc);
 			renderRectangleSelectFrame(info,rc);
@@ -6405,6 +6495,7 @@ struct Renderer(B){
 			renderSynchronizationForm(info,rc);
 			renderChatMessages(state,networkState,info,rc);
 			renderFPS(info,rc);
+			renderStatusLabel(info,rc);
 			renderStartCountdown(info,rc);
 			if(state) renderTriggerPresentation(options,state,info,rc);
 		}

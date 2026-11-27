@@ -706,7 +706,10 @@ final class SacObject(B){
 			this.materials=sac.materials;
 			this.transparentMaterials=sac.transparentMaterials;
 			this.shadowMaterials=sac.shadowMaterials;
-		}else saxsi.createMeshes(animations[AnimationState.stance1].frames[0]);
+		}else{
+			static if(__traits(hasMember,B,"modModelLoaded")) B.modModelLoaded(tag,dat2.saxsModel,saxsi.saxs);
+			saxsi.createMeshes(animations[AnimationState.stance1].frames[0]);
+		}
 		initializeNTTData(dat2.saxsModel,tag);
 		if(isSacDoctor){
 			animations[AnimationState.death0]=animations[cast(AnimationState)SacDoctorAnimationState.dance];
