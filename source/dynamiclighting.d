@@ -298,8 +298,14 @@ struct DynamicLighting {
             float actualEnergy = energy*min(1.0f,alpha*4);
             self.emit(pos+lift,color,actualEnergy,radius,scene,st);
         }
-        foreach (ref emitter; objects.particleEmitters.emitters.data)
-	        emitter.eachEmitterParticle!particle(st,&this,scene,st);
+        // The emitters are stored by particle group, so only the groups of the
+        // particle types that give light are replayed.
+        static foreach (type; [ParticleType.lightningCasting, ParticleType.chainLightningCasting]) {{
+            auto group = particleGroup(type);
+            if (group < objects.particleEmitters.groups.length)
+                foreach (ref emitter; objects.particleEmitters.groups[group].data)
+                    emitter.eachEmitterParticle!particle(st,&this,scene,st);
+        }}
 
         // Live sources always get first claim on the pool. A fading light
         // is discarded if it is too far away or the live lights fill the pool.

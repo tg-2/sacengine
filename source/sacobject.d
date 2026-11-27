@@ -1373,7 +1373,6 @@ enum ParticleKind{
 
 final class SacParticle(B){
 	int stateIndex=-1;
-	int renderBucket=-1; // index into Renderer.particleBuckets
 	B.Mesh[] meshes;
 	B.Texture texture;
 	B.Material material;
@@ -1468,7 +1467,8 @@ final class SacParticle(B){
 				return ParticleKind.relativeTwirl;
 		}
 	}
-	@property bool bumpOffGround(){
+	@property bool bumpOffGround(){ return bumpsOffGround(type); }
+	static bool bumpsOffGround(ParticleType type){
 		switch(type) with(ParticleType){
 			case scarabHit,ghostTransition,wrathParticle,rainbowParticle,gnomeHit,warmongerHit,ashParticle,volcanoAsh,rock,webDebris,oil,swarmHit,slime,needle,redVortexDroplet,blueVortexDroplet,spark,styxSpark,rend,bouncingHeart: return true;
 			default: return false;
