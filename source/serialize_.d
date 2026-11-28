@@ -165,6 +165,8 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Ord
 void serialize(alias sink)(ref PositionPredictor locationPredictor){ serializeStruct!sink(locationPredictor); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==PositionPredictor)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink)(ref PathNode node){ serializeStruct!sink(node); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==PathNode)){ deserializeStruct(result,state,data); }
 void serialize(alias sink)(ref Path path){ serializeStruct!sink(path); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Path)){ deserializeStruct(result,state,data); }
 

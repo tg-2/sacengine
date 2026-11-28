@@ -579,43 +579,96 @@ struct PositionPredictor{
 	}
 }
 
-enum directWalkDistance=5.0f;
+// Ground pathfinding, port of Sacrifice.exe's global pathfinder (object 0x4d5f00).
+// MoveTo 0x45b620/0x45b780 -> follow 0x46fd10 -> search 0x46e960 -> path build 0x46f6d0.
+// Arithmetic of Sacrifice.exe's x87 code: the exe sets the control word to 53-bit precision with rounding
+// towards zero (0x40a242: or 0xc00) and DirectDraw is created with DDSCL_FPUPRESERVE (3D_D3D.DLL), so every
+// operation of the original pathfinder truncates. The port computes in double precision with the default
+// rounding and corrects each result towards zero using its exact rounding error (no FMA, no rounding mode
+// changes, so the result is the same on every platform and with every optimization level).
+struct X87{
+	import std.math: nextDown, nextUp, fabs;
+	static import std.math;
+	static double towardsZero(double rounded,double error){
+		if(error==0.0||rounded==0.0) return rounded;
+		if((rounded>0.0)!=(error>0.0)) return rounded>0.0?nextDown(rounded):nextUp(rounded);
+		return rounded;
+	}
+	static double add(double a,double b){
+		auto s=a+b;
+		auto bb=s-a;
+		auto error=(a-(s-bb))+(b-bb);
+		return towardsZero(s,error);
+	}
+	static double sub(double a,double b){ return add(a,-b); }
+	private static void split(double a,out double hi,out double lo){
+		auto c=134217729.0*a;
+		hi=c-(c-a);
+		lo=a-hi;
+	}
+	private static double productError(double a,double b,double p){
+		double ah,al,bh,bl;
+		split(a,ah,al);
+		split(b,bh,bl);
+		return ((ah*bh-p)+ah*bl+al*bh)+al*bl;
+	}
+	static double mul(double a,double b){
+		auto p=a*b;
+		return towardsZero(p,productError(a,b,p));
+	}
+	static double div(double a,double b){
+		auto q=a/b;
+		auto p=q*b;
+		auto r=(a-p)-productError(q,b,p); // a-q*b
+		return towardsZero(q,b>0.0?r:-r);
+	}
+	static double sqrt(double a){
+		auto s=std.math.sqrt(a);
+		auto p=s*s;
+		return towardsZero(s,(a-p)-productError(s,s,p));
+	}
+	static float toFloat(double a){
+		auto f=cast(float)a;
+		if(f!=a&&fabs(f)>fabs(a)) f=f>0.0f?nextDown(f):nextUp(f);
+		return f;
+	}
+	static int toInt(double a){ return cast(int)a; } // _ftol truncates
+}
+struct PathNode{
+	int cell; // 10x10 cell: x+256*y
+	ubyte level; // hierarchy level of the cell when it was added (0x46fbc0)
+	ubyte danger; // highest danger of the cells this waypoint stands for
+	float x,y;
+	mixin Assign;
+}
+enum PathResult{
+	unreachable=-1, // -1: path used up and the target is on another island (MoveTo stops)
+	direct=0, // 0: go straight towards the target
+	waypoint=1, // walk towards the returned waypoint
+}
 struct Path{
-	Vector3f targetPosition;
-	int age=0;
-	private Array!Vector3f path;
+	Array!PathNode nodes; // back: node the creature is at, [$-2]: next waypoint, front: end of the path
+	Vector3f target; // target the path was computed for (S+4)
+	float evasionTime=0.0f; // frames of obstacle evasion since the path was computed (S+0x14)
+	float age=0.0f; // seconds since the path was computed (S+0x18)
 	mixin Assign;
 	void reset(){
-		age=0;
-		path.length=0;
-		targetPosition=Vector3f.init;
+		nodes.length=0;
+		target=Vector3f(0.0f,0.0f,0.0f);
+		evasionTime=0.0f;
+		age=0.0f;
 	}
-	Vector3f nextTarget(B)(Vector3f currentPosition,Vector3f[2] hitbox,Vector3f newTarget,float radius,bool frontOfAIQueue,ObjectState!B state){
-		// TODO: .xy is a hack to work around dynamic map shape
-		if((newTarget-targetPosition).xy.lengthsqr>directWalkDistance^^2)
-			reset();
-		++age;
-		if(frontOfAIQueue){
-			if(targetPosition!=newTarget||age>2*updateFPS){
-				if(state.findPath(path,currentPosition,newTarget,radius))
-					targetPosition=newTarget;
-				age=0;
-			}
-		}
-		bool blocked(Vector3f position){
-			bool collision=false;
-			void handleCollision(ProximityEntry entry){ collision=true; }
-			auto movedHitbox=hitbox;
-			foreach(ref x;movedHitbox) x+=position;
-			state.proximity.collide!handleCollision(movedHitbox);
-			return collision;
-		}
-		// TODO: .xy is a hack to work around dynamic map shape
-		while(path.length&&((path.back()-currentPosition).xy.lengthsqr<2.0f*directWalkDistance^^2||blocked(path.back())))
-			path.removeBack(1);
-		if(path.length) return path.back();
-		return newTarget;
+	PathResult nextTarget(B)(Vector3f currentPosition,Vector3f newTarget,out Vector3f waypoint,bool mayRecompute,ObjectState!B state){
+		state.applyEdgeChanges();
+		return state.pathFinder.follow(this,currentPosition,newTarget,waypoint,mayRecompute,state);
 	}
+	// 0x470090: the path is about to end (fewer than three nodes or the creature's node is close to the target)
+	bool nearEnd(){
+		if(nodes.length<3) return true;
+		auto n1=nodes.back;
+		return (Vector2f(n1.x,n1.y)-target.xy).lengthsqr<100.0f;
+	}
+	void popNode(){ if(nodes.length) nodes.removeBack(1); }
 }
 final class DangerGrid{
 	enum int size=256;
@@ -679,58 +732,77 @@ final class DangerGrid{
 		}
 	}
 }
-class PathFinder(B){
-	bool[512][512] free;
-	uint edgeChangesHash=uint.max;
-	private static bool isFree(int x,int y,bool[][] edges){
-		if(x<=0||y<=0||x+1>=xlen||y+1>=ylen) return false;
-		int nx=x/2, ny=y/2;
-		if(!(x&1)&&!(y&1)) return !edges[ny][nx]&&(!nx||!edges[ny][nx-1])&&(!ny||!edges[ny-1][nx])&&(nx+1>=256||!edges[ny][nx+1])&&(ny+1>=256||!edges[ny+1][nx]);
-		if((x&1)&&(y&1)) return !edges[ny][nx]&&(nx+1>=256||!edges[ny][nx+1])&&(ny+1>=256||!edges[ny+1][nx])&&(nx+1>=256||ny+1>=256||!edges[ny+1][nx+1]);
-		if(x&1&&!(y&1)){
-			if(edges[ny][nx]||(nx+1>=256||edges[ny][nx+1])) return false;
-			if(!ny||edges[ny-1][nx]&&(nx+1>=256||edges[ny-1][nx+1])) return false;
-			if(ny+1>=256||edges[ny+1][nx]&&(nx+1>=256||edges[ny+1][nx+1])) return false;
-		}else{
-			if(edges[ny][nx]||(ny+1>=256||edges[ny+1][nx])) return false;
-			if(!nx||edges[ny][nx-1]&&(ny+1>=256||edges[ny+1][nx-1])) return false;
-			if(nx+1>=256||edges[ny][nx+1]&&(ny+1>=256||edges[ny+1][nx+1])) return false;
-		}
-		return true;
+// Terrain speed of each tile (byte 1 of Game3d's 12-byte tile properties, LAND+0x1b1c).
+// LAND::AddTexture reads the properties after the 7 mipmap levels of the MAPT file. LAND::SetMapGroup then
+// gives each tile of a map group the group's speed (byte 49 of the MAPG file) unless the tile has flag 0x40,
+// and ORs the group flags (byte 48) into the tile flags. A group with byte 32 == 1 joins two earlier groups:
+// flags = OR, speed = average.
+ubyte[256] loadTileSpeeds(string directory){
+	import std.path:buildPath;
+	import std.format:format;
+	ubyte[256] speeds=0,flags=0;
+	foreach(k;0..256){
+		auto maptFile=buildPath(directory,format("%04d.MAPT",k));
+		if(!fileExists(maptFile)) continue;
+		auto data=readFile(maptFile);
+		if(data.length!=5476) continue;
+		flags[k]=data[5464];
+		speeds[k]=data[5465];
 	}
-	float[512][512] heights;
-	int numComponents=0;
-	int[512][512] componentIds;
-
-	void determineComponents(){
-		numComponents=0;
-		foreach(ref c;componentIds) c[]=-1;
-		static struct Entry{ short x,y; }
-		Queue!Entry q;
-		foreach(x;0..xlen){
-			foreach(y;0..ylen){
-				if(~componentIds[x][y]) continue;
-				void fill(short x,short y,int id){
-					if(~componentIds[x][y]||!free[x][y]) return;
-					componentIds[x][y]=id;
-					q.clear();
-					q.push(Entry(x,y));
-					while(!q.empty){
-						auto xy=q.front;
-						q.popFront();
-						x=xy.x,y=xy.y;
-						foreach(nx;max(0,x-1)..min(x+2,xlen)){
-							foreach(ny;max(0,y-1)..min(y+2,ylen)){
-								if(~componentIds[nx][ny]||!free[nx][ny]) continue;
-								componentIds[nx][ny]=id;
-								q.push(Entry(cast(short)nx,cast(short)ny));
-							}
-						}
-					}
-				}
-				fill(cast(short)x,cast(short)y,numComponents++);
+	ubyte[][] groups;
+	for(int k=0;fileExists(buildPath(directory,format("MG%02d.MAPG",k)));k++){
+		auto data=readFile(buildPath(directory,format("MG%02d.MAPG",k)));
+		groups~=data.length==60?data.dup:null;
+	}
+	foreach(group;groups){
+		if(!group) continue;
+		if(group[32]==1){
+			auto a=parseLE(group[0..4]),b=parseLE(group[4..8]);
+			auto ga=a<groups.length?groups[a]:null,gb=b<groups.length?groups[b]:null;
+			if(ga&&gb){
+				group[48]=cast(ubyte)(ga[48]|gb[48]);
+				group[49]=cast(ubyte)((ga[49]+gb[49])>>1);
 			}
 		}
+		foreach(tile;group[34..34+min(group[33],14)]){
+			if(!(flags[tile]&0x40)) speeds[tile]=group[49];
+			flags[tile]|=group[48];
+		}
+	}
+	return speeds;
+}
+
+class PathFinder(B){
+	enum int size=256, numCells=size*size;
+	enum int defaultBudget=0x600, maxBudget=0x1fe0, otherIslandBudget=0x400, budgetStep=0x400, maxSearchNodes=0x2000;
+	enum float closedCost=1e6f;
+	static immutable int[8] neighborOffsets=[-1-size,-size,1-size,1,size+1,size,size-1,-1];
+	enum float diagonalCost=0x1.6a09aap+0f; // 0x3fb504d5 in the original cost table (0x46e6fd), slightly less than sqrt(2)
+	static immutable float[8] neighborCosts=[diagonalCost,1.0f,diagonalCost,1.0f,diagonalCost,1.0f,diagonalCost,1.0f];
+	static immutable int[3] levelMasks=[0xffff,0xfefe,0xfcfc];
+
+	uint edgeChangesHash=uint.max;
+	// Game3d LAND::UpdateEdgeMipMaps, level 0: bit 0 = one of the four corner vertices of the cell is an edge
+	ubyte[numCells] blockedCells;
+	// level 1 (2x2 cells): OR of bit 0
+	ubyte[numCells/4] blockedBlocks;
+	// LAND::CreateConnectivityMap: islands of 8-connected non-edge vertices, 0 for edge vertices
+	int[numCells] vertexIslands;
+	int[numCells] heightUnits; // height map in its own units (0.1), only differences are used
+	float[numCells] terrainFactors; // 64/tile speed
+
+	this(SacMap!B map){
+		enforce(map.n==size&&map.m==size,"pathfinder expects a 256x256 map");
+		import nttData:landFolders;
+		auto tileSpeeds=loadTileSpeeds(landFolders[map.tileset]);
+		foreach(y;0..size){
+			foreach(x;0..size){
+				heightUnits[x+size*y]=cast(int)round(10.0f*map.heights[y][x]);
+				auto speed=tileSpeeds[map.tiles[y][x]];
+				terrainFactors[x+size*y]=speed>0?X87.toFloat(X87.div(64.0,speed)):1.0f;
+			}
+		}
+		updateEdges(map,EdgeChanges.emptyHash);
 	}
 
 	void updateEdges(SacMap!B map,uint hash){
@@ -738,79 +810,39 @@ class PathFinder(B){
 		edgeChangesHash=hash;
 		auto sw=frameprof.timer();
 		scope(exit) frameprof.countEdgeUpdate(sw.peek);
-		foreach(x;0..xlen){
-			foreach(y;0..ylen){
-				free[x][y]=isFree(x,y,map.edges);
+		auto edges=map.edges;
+		bool edge(int x,int y){ return x<0||y<0||x>=size||y>=size||edges[y][x]; }
+		foreach(y;0..size)
+			foreach(x;0..size)
+				blockedCells[x+size*y]=edge(x,y)||edge(x+1,y)||edge(x,y+1)||edge(x+1,y+1);
+		foreach(by;0..size/2)
+			foreach(bx;0..size/2)
+				blockedBlocks[bx+size/2*by]=(blockedCells[2*bx+size*2*by]|blockedCells[2*bx+1+size*2*by]|blockedCells[2*bx+size*(2*by+1)]|blockedCells[2*bx+1+size*(2*by+1)])&1;
+		vertexIslands[]=0;
+		int numIslands=0;
+		static struct Entry{ short x,y; }
+		Queue!Entry q;
+		foreach(y;0..size){
+			foreach(x;0..size){
+				if(edge(x,y)||vertexIslands[x+size*y]) continue;
+				auto id=++numIslands;
+				vertexIslands[x+size*y]=id;
+				q.clear();
+				q.push(Entry(cast(short)x,cast(short)y));
+				while(!q.empty){
+					auto cur=q.front;
+					q.popFront();
+					foreach(dy;-1..2){
+						foreach(dx;-1..2){
+							int nx=cur.x+dx,ny=cur.y+dy;
+							if(edge(nx,ny)||vertexIslands[nx+size*ny]) continue;
+							vertexIslands[nx+size*ny]=id;
+							q.push(Entry(cast(short)nx,cast(short)ny));
+						}
+					}
+				}
 			}
 		}
-		determineComponents();
-	}
-
-	this(SacMap!B map){
-		updateEdges(map,EdgeChanges.emptyHash);
-		enum scale=directWalkDistance;
-		foreach(y;0..ylen){
-			foreach(x;0..xlen){
-				heights[y][x]=map.getHeight(Vector3f(scale*x,scale*y,0.0f),ZeroDisplacement());
-			}
-		}
-	}
-
-	int getComponentId(Vector3f position,ObjectState!B state){
-		auto xy=closestUnblocked(roundToGrid(position,state).expand,1,state),x=xy[0],y=xy[1];
-		if(x<0||x>=xlen||y<0||y>=ylen) return -1;
-		return componentIds[x][y];
-	}
-
-	static struct Entry{
-		float heuristic;
-		float distance;
-		short x,y;
-		bool less(ref Entry rhs){ return heuristic<rhs.heuristic; }
-		//bool less(ref Entry rhs){ return distance<rhs.distance; }
-	}
-	ubyte[512][512] pred;
-	float[512][512] dist;
-	enum xlen=cast(int)dist.length, ylen=cast(int)dist[0].length;
-	static Tuple!(short,"x",short,"y") roundToGrid(Vector3f position,ObjectState!B state){
-		enum scale=1.0f/directWalkDistance;
-		//int x=cast(int)round(scale*(position.x+position.y)-0.5f);
-		//int y=cast(int)round(scale*(-position.x+position.y)+255.5f);
-		short x=cast(short)round(scale*position.x);
-		short y=cast(short)round(scale*position.y);
-		x=max(cast(short)0,min(x,cast(short)(xlen-1)));
-		y=max(cast(short)0,min(y,cast(short)(ylen-1)));
-		return tuple!("x","y")(x,y);
-	}
-	Vector3f position(short x,short y,ObjectState!B state){
-		enum scale=directWalkDistance;
-		//auto a=scale*(0.5f*(x-y)+128.0f);
-		//auto b=scale*(0.5f*(x+y)-127.5f);
-		auto a=scale*x;
-		auto b=scale*y;
-		auto p=Vector3f(a,b,heights[y][x]);
-		//p.z=state.getHeight(p);
-		return p;
-	}
-
-
-	enum blockingTolerance=1.5f;
-	bool[512][512] blocked;
-	void updateBlocked(ObjectState!B state){
-		foreach(ref b;blocked) b[]=false;
-		state.eachStatic!((ref obj,blocked){
-			foreach(hitbox;obj.hitboxes){
-				if(hitbox[0].z>state.getHeight(obj.position)+2.0f)
-					continue;
-				auto xy1=roundToGrid(hitbox[0]+0.5f*directWalkDistance-blockingTolerance,state);
-				auto xy2=roundToGrid(hitbox[1]-0.5f*directWalkDistance+blockingTolerance,state);
-				auto x1=xy1.x,y1=xy1.y;
-				auto x2=xy2.x,y2=xy2.y;
-				foreach(i;x1..x2+1)
-					foreach(j;y1..y2+1)
-						(*blocked)[i][j]=true;
-			}
-		})(&blocked);
 	}
 
 	static bool unblocked(Vector3f position,ObjectState!B state){
@@ -819,111 +851,269 @@ class PathFinder(B){
 		foreach(ref off;offsets) if(!state.isOnGround(position+off)) return false;
 		return true;
 	}
-	bool unblocked(short x,short y,ObjectState!B state){
-		return free[x][y]&&!blocked[x][y];
+
+	// 0x470120: island at a position (first non-zero of the four vertices of the 10x10 cell), 0 = none
+	int island(Vector3f position){
+		int x=X87.toInt(X87.mul(position.x,0.1)),y=X87.toInt(X87.mul(position.y,0.1));
+		if(x<0||x>=size||y<0||y>=size) return 0;
+		int vertex(int vx,int vy){ return vx<size&&vy<size?vertexIslands[vx+size*vy]:0; }
+		if(auto r=vertex(x,y)) return r;
+		if(auto r=vertex(x+1,y)) return r;
+		if(auto r=vertex(x,y+1)) return r;
+		return vertex(x+1,y+1);
 	}
-	Tuple!(short,"x",short,"y") closestUnblocked(short x,short y,short limit,ObjectState!B state){
-		int dist=int.max;
-		short cx=x, cy=y;
-		foreach(short nx;max(cast(short)0,cast(short)(x-limit))..min(cast(short)(x+limit+1),cast(short)xlen)){
-			foreach(short ny;max(cast(short)0,cast(short)(y-limit))..min(cast(short)(y+limit+1),cast(short)ylen)){
-				int cand=(nx-x)^^2+(ny-y)^^2;
-				if(unblocked(nx,ny,state)&&cand<dist){
-					cx=nx, cy=ny;
-					dist=cand;
-				}
+	// 0x4700e0: both positions on the same island
+	bool sameIsland(Vector3f a,Vector3f b){
+		auto ia=island(a);
+		if(!ia) return false;
+		auto ib=island(b);
+		if(!ib) return false;
+		return ia==ib;
+	}
+	// island id, -1 if the position is on no island (0x470120 returns 0)
+	int getComponentId(Vector3f position,ObjectState!B state){
+		state.applyEdgeChanges(); // the pathfinder is shared by all states (rollback)
+		auto r=island(position);
+		return r?r:-1;
+	}
+
+	static int cellIndex(Vector3f position){
+		return cast(ushort)(X87.toInt(X87.mul(position.x,0.1))+size*X87.toInt(X87.mul(position.y,0.1)));
+	}
+	static int danger(int cell,ObjectState!B state){
+		cell&=0xffff;
+		return state.dangerGrid.cells[cell>>8][cell&0xff];
+	}
+	// 0x46f680 (result stays on the FPU stack, so it is not rounded to float)
+	static double cellDistance(int a,int b){
+		int dx=(a&0xff)-(b&0xff),dy=((a&0xff00)-(b&0xff00))>>8;
+		return X87.sqrt(dx*dx+dy*dy);
+	}
+	// hierarchy level of a cell (0x46fbc0, also inlined in 0x46fd10 and 0x46f6d0)
+	int level(int cell,ObjectState!B state){
+		if(blockedCells[cell]&1) return 0;
+		auto d=danger(cell,state);
+		if(d!=danger(cell+1,state)||d!=danger(cell-1,state)||d!=danger(cell+size,state)||d!=danger(cell-size,state)) return 0;
+		int x=cell&0xff,y=cell>>8;
+		if(blockedBlocks[(x>>1)+size/2*(y>>1)]) return 1;
+		return 2;
+	}
+
+	// search state (0x46e960)
+	enum head=numCells,tail=numCells+1; // open list sentinels (cost 0 and 1e6)
+	uint searchStamp=0;
+	uint[numCells] stamps;
+	float[numCells+2] costs; // f
+	float[numCells] distances; // g
+	float[numCells] heuristics; // h
+	ushort[numCells] parents;
+	ubyte[numCells] nodeDangers;
+	int[numCells+2] next,prev;
+	int numSearchNodes,count,budget;
+	float tieBias,heuristicWeight,popWindow;
+
+	private void insertBefore(int n,int w){
+		next[n]=w; prev[n]=prev[w];
+		next[prev[w]]=n; prev[w]=n;
+	}
+	private void unlink(int n){
+		next[prev[n]]=next[n];
+		prev[next[n]]=prev[n];
+	}
+	private void insertSorted(int n){
+		auto w=next[head];
+		while(costs[w]<costs[n]) w=next[w];
+		insertBefore(n,w);
+	}
+	// 0x46f340
+	private bool add(int cell,float cost,int parent,int targetCell,ObjectState!B state){
+		if(stamps[cell]==searchStamp){
+			if(costs[cell]>=closedCost) return true;
+			// intermediate values are kept on the FPU stack and only rounded to float when stored
+			double newDistance=X87.add(nodeDangers[cell],cost);
+			if(!(newDistance<distances[cell])) return true;
+			distances[cell]=X87.toFloat(newDistance);
+			parents[cell]=cast(ushort)parent;
+			costs[cell]=X87.toFloat(X87.add(X87.add(heuristics[cell],tieBias),newDistance));
+			if(costs[cell]<costs[prev[cell]]){
+				auto w=prev[prev[cell]];
+				unlink(cell);
+				while(costs[cell]<costs[w]) w=prev[w];
+				insertBefore(cell,next[w]);
+			}else if(costs[cell]>costs[next[cell]]){
+				auto w=next[next[cell]];
+				unlink(cell);
+				while(costs[cell]>costs[w]) w=next[w];
+				insertBefore(cell,w);
 			}
+		}else{
+			if(numSearchNodes>=maxSearchNodes) return false;
+			++numSearchNodes;
+			stamps[cell]=searchStamp;
+			parents[cell]=cast(ushort)parent;
+			nodeDangers[cell]=cast(ubyte)danger(cell,state);
+			distances[cell]=X87.toFloat(X87.add(nodeDangers[cell],cost));
+			heuristicWeight=X87.toFloat(X87.add(1e-4f,heuristicWeight));
+			double heuristic=X87.mul(cellDistance(cell,targetCell),heuristicWeight);
+			heuristics[cell]=X87.toFloat(heuristic);
+			costs[cell]=X87.toFloat(X87.add(X87.add(heuristic,distances[cell]),tieBias));
+			insertSorted(cell);
 		}
-		return tuple!("x","y")(cx,cy);
+		tieBias=X87.toFloat(X87.sub(tieBias,0.0005f));
+		++count;
+		return true;
 	}
-	Heap!Entry heap;
-	bool findPath(ref Array!Vector3f path,Vector3f start,Vector3f end,float radius,ObjectState!B state){
+	// 0x46fbc0
+	private ref PathNode push(ref Path path,int cell,ObjectState!B state){
+		PathNode node;
+		node.cell=cell;
+		node.danger=cast(ubyte)danger(cell,state);
+		node.level=cast(ubyte)level(cell,state);
+		node.x=X87.toFloat(X87.add(X87.mul(cell&0xff,10.0),5.0));
+		node.y=X87.toFloat(X87.add(X87.mul(cell>>8,10.0),5.0));
+		path.nodes~=node;
+		return path.nodes.back;
+	}
+	// 0x46e960 and 0x46f6d0. The result is the cost of the end node, 0 means "go straight".
+	float search(Vector3f start,Vector3f target,ref Path path,ObjectState!B state){
 		auto fpSw=frameprof.timer();
 		scope(exit) frameprof.countFindPath(fpSw.peek);
-		if(path.length){ // check validity of existing path
-			if((path.back-start).lengthsqr<8.0f*directWalkDistance^^2){
-				bool ok=true;
-				foreach(p;path.data){
-					if(!unblocked(p,state)){
-						ok=false;
-						break;
-					}
-				}
-				if(ok) return false;
-			}
+		if(++searchStamp==0){ stamps[]=0; searchStamp=1; }
+		tieBias=3.0f;
+		heuristicWeight=0.5f;
+		popWindow=1.0f;
+		budget=defaultBudget; // the budget argument is 0 in every MoveTo call
+		int maximum=maxBudget;
+		numSearchNodes=0;
+		count=0;
+		if(!sameIsland(start,target)) maximum=otherIslandBudget;
+		costs[head]=0.0f; costs[tail]=closedCost;
+		next[head]=tail; prev[tail]=head;
+		auto startCell=cellIndex(start),targetCell=cellIndex(target);
+		if(blockedCells[targetCell]&1){
+			auto limit=X87.toInt(X87.mul(X87.add(fabs(X87.sub(start.x,target.x)),fabs(X87.sub(start.y,target.y))),0.4));
+			budget=maximum=min(limit,0x400);
 		}
-		auto nstart=roundToGrid(start,state);
-		auto nend=roundToGrid(end,state);
-		if(!unblocked(nend.expand,state)){
-			auto cand=closestUnblocked(nend.expand,3,state);
-			if(nend==cand) return false; // TODO
-			nend=cand;
-		}
-		auto endpos=position(nend.expand,state);
-		if((start-end).lengthsqr<(end-endpos).lengthsqr){
-			path.length=0;
-			return true;
-		}
-		import std.datetime.stopwatch;
-		/+auto sw=StopWatch(AutoStart.yes);
-		scope(success){ writeln(sw.peek.total!"hnsecs"*1e-7*1e3,"ms"); }+/
-		import core.stdc.string: memset;
-		memset(&pred,0,pred.sizeof);
-		foreach(ref d;dist) d[]=float.infinity;
-		//writeln("memset: ",sw.peek.total!"hnsecs"*1e-7*1e3,"ms");
-		heap.clear();
-		heap.push(Entry(max(0.0f,(endpos-position(nstart.expand,state)).length-radius),0.0f,nstart.expand));
-		pred[nstart.x][nstart.y]=0x7f;
-		auto x=nstart.x,y=nstart.y;
-		dist[x][y]=0.0f;
-		auto startId=getComponentId(start,state),endId=getComponentId(end,state);
-		auto limit=startId==endId&&startId!=-1?4*8160:4*1024;
-		bool found=false;
-		auto bx=x,by=y;
-		float besth=float.infinity;
-		for(int i=0;!heap.empty()&&i<limit;){
-			auto cur=heap.pop();
-			if(pred[cur.x][cur.y]&(1<<7)) continue;
-			i++;
-			pred[cur.x][cur.y]|=(1<<7);
-			x=cur.x,y=cur.y;
-			auto h=cur.heuristic-cur.distance;
-			if(h<besth){
-				besth=h;
-				bx=x,by=y;
-			}
-			if(cur.x==nend.x&&cur.y==nend.y){ found=true; break; }
-			auto pos=position(cur.x,cur.y,state);
-			if(radius!=0.0f&&(pos-endpos).lengthsqr<radius^^2){ found=true; break; }
-			foreach(nx;max(cast(short)0,cast(short)(cur.x-1))..min(cast(short)(cur.x+2),cast(short)xlen)){
-				foreach(ny;max(cast(short)0,cast(short)(cur.y-1))..min(cast(short)(cur.y+2),cast(short)ylen)){
-					if(cur.x==nx&&cur.y==ny) continue;
-					if(pred[nx][ny]&(1<<7)) continue;
-					if(!unblocked(nx,ny,state)) continue;
-					auto npos=position(nx,ny,state);
-					//if(!unblocked(npos,state)) continue;
-					auto distance=cur.distance+(pos-npos).length+5.0f*state.dangerGrid.danger(npos);
-					//auto distance=cur.heuristic-max(0.0f,(endpos-pos).length-radius)+(pos-npos).length;
-					auto heuristic=distance+max(0.0f,(endpos-npos).length-radius);
-					if(heuristic>=dist[nx][ny]) continue;
-					dist[nx][ny]=heuristic;
-					pred[nx][ny]=cast(ubyte)(((x-nx+1)<<2)+(y-ny+1));
-					heap.push(Entry(heuristic,distance,nx,ny));
-				}
-			}
-		}
-		if(!found){ x=bx; y=by; }
-		heap.clear();
-		path.length=0;
+		numSearchNodes=1;
+		stamps[startCell]=searchStamp;
+		parents[startCell]=cast(ushort)startCell;
+		nodeDangers[startCell]=cast(ubyte)danger(startCell,state);
+		distances[startCell]=nodeDangers[startCell];
+		heuristicWeight=X87.toFloat(X87.add(1e-4f,heuristicWeight));
+		double startHeuristicValue=X87.mul(cellDistance(startCell,targetCell),heuristicWeight);
+		heuristics[startCell]=X87.toFloat(startHeuristicValue);
+		costs[startCell]=X87.toFloat(X87.add(X87.add(distances[startCell],tieBias),startHeuristicValue));
+		insertSorted(startCell);
+		tieBias=X87.toFloat(X87.sub(tieBias,0.0005f));
+		++count;
+		auto startHeuristic=heuristics[startCell];
+		int end=-1;
 		for(;;){
-			path~=position(x,y,state);
-			if(x==nstart.x&&y==nstart.y) break;
-			if(!(pred[x][y]&(1<<7))) break;
-			auto dx=((pred[x][y]&((1<<7)-1))>>2)-1;
-			auto dy=((pred[x][y]&((1<<7)-1))&3)-1;
-			x+=dx,y+=dy;
+			auto first=next[head];
+			if(first==tail) break;
+			double threshold=X87.add(costs[first],popWindow);
+			auto best=first;
+			for(auto w=next[first];costs[w]<threshold;w=next[w])
+				if(heuristics[w]<heuristics[best]) best=w;
+			unlink(best);
+			costs[best]=closedCost;
+			popWindow=X87.toFloat(X87.add(1e-4f,popWindow));
+			if(best==targetCell){ end=best; break; }
+			if(count>budget){
+				int closest=-1;
+				for(auto w=next[head];w!=tail;w=next[w])
+					if(closest==-1||heuristics[w]<heuristics[closest]) closest=w;
+				if(budget>=maximum){ end=closest; break; }
+				if(closest!=-1&&X87.mul(budget,0.0125)<distances[closest]&&heuristics[closest]<startHeuristic){ end=closest; break; }
+				budget=min(budget+budgetStep,maximum);
+			}
+			auto factor=terrainFactors[best];
+			auto height=heightUnits[best];
+			foreach(k;0..8){
+				auto cell=(best+neighborOffsets[k])&0xffff;
+				if(cell!=targetCell&&blockedCells[cell]&1) continue;
+				auto dh=heightUnits[cell]-height;
+				auto slope=X87.mul(dh*dh,0.0004);
+				if(!(slope<16.0)) slope=16.0;
+				auto cost=X87.toFloat(X87.add(X87.add(X87.mul(neighborCosts[k],factor),distances[best]),slope));
+				if(!add(cell,cost,best,targetCell,state)) return 0.0f;
+			}
 		}
+		if(end==-1) return 0.0f;
+		int key=0;
+		if(end==targetCell){
+			auto node=&push(path,targetCell,state);
+			node.x=target.x;
+			node.y=target.y;
+			key=levelMasks[node.level]&targetCell;
+		}
+		auto result=distances[end];
+		int threshold=(nodeDangers[end]*3)>>1;
+		int lastLevel=0;
+		for(int cur=end;cur!=startCell;cur=parents[cur]){
+			int curDanger=nodeDangers[cur];
+			if(curDanger<=threshold){
+				lastLevel=level(cur,state);
+				if((levelMasks[lastLevel]&cur)==key){
+					if(path.nodes.length&&curDanger>path.nodes.back.danger) path.nodes.back.danger=cast(ubyte)curDanger;
+					continue;
+				}
+			}
+			push(path,cur,state);
+			threshold=(curDanger*3)>>1;
+			key=levelMasks[lastLevel]&cur;
+		}
+		auto node=&push(path,startCell,state);
+		node.x=start.x;
+		node.y=start.y;
+		return result;
+	}
+	// 0x46fd10 check of the first two nodes
+	private bool valid(ref Path path,ObjectState!B state){
+		auto n1=path.nodes[$-1],n2=path.nodes[$-2];
+		if(level(n1.cell,state)!=n1.level||level(n2.cell,state)!=n2.level) return false;
+		if(danger(n1.cell,state)>n1.danger||danger(n2.cell,state)>n1.danger) return false;
 		return true;
+	}
+	// 0x46fd10
+	PathResult follow(ref Path path,Vector3f start,Vector3f target,out Vector3f waypoint,bool mayRecompute,ObjectState!B state){
+		bool recompute=path.nodes.length<2;
+		if(!recompute){
+			if(path.evasionTime>=60.0f&&path.age>1.0f) recompute=true;
+			else{
+				auto tdx=X87.sub(target.x,path.target.x),tdy=X87.sub(target.y,path.target.y);
+				auto targetMovement=X87.add(X87.mul(tdy,tdy),X87.mul(tdx,tdx));
+				if(targetMovement>400.0f) recompute=true;
+				else if(path.age>1.0f){
+					auto ldx=X87.sub(start.x,path.target.x),ldy=X87.sub(start.y,path.target.y);
+					auto inverse=X87.div(1.0,X87.mul(path.age,path.age));
+					auto limit=X87.mul(X87.add(X87.mul(ldy,ldy),X87.mul(ldx,ldx)),inverse);
+					if(targetMovement>limit||!valid(path,state)) recompute=true;
+				}
+			}
+		}
+		if(recompute&&!mayRecompute){ // waits for its turn in the AI queue
+			if(path.nodes.length<2) return PathResult.direct;
+			recompute=false;
+		}
+		if(recompute){
+			path.reset();
+			if(search(start,target,path,state)==0.0f) return PathResult.direct;
+			path.evasionTime=0.0f;
+			path.target=target;
+			path.age=0.0f;
+		}
+		while(path.nodes.length>=2){
+			auto n2=path.nodes[$-2];
+			auto ndx=X87.sub(start.x,n2.x),ndy=X87.sub(start.y,n2.y);
+			auto distancesqr=X87.add(X87.mul(ndy,ndy),X87.mul(ndx,ndx));
+			if(!(distancesqr<=16.0f)&&path.nodes.length>=3||!(distancesqr<=1.0f)){
+				waypoint=Vector3f(n2.x,n2.y,0.0f);
+				return PathResult.waypoint;
+			}
+			path.nodes.removeBack(1);
+		}
+		return sameIsland(start,target)?PathResult.direct:PathResult.unreachable;
 	}
 }
 
@@ -14208,7 +14398,19 @@ bool moveTowards(B)(ref MovingObject!B object,Vector3f ultimateTargetPosition,fl
 	auto isFlying=object.creatureState.movement==CreatureMovement.flying;
 	Vector3f targetPosition=ultimateTargetPosition;
 	if(isFlying||disablePathfinding) object.creatureAI.path.reset();
-	else targetPosition=object.creatureAI.path.nextTarget(object.position,object.relativeHitbox,ultimateTargetPosition,acceptableRadius,state.frontOfAIQueue(object.side,object.id),state);
+	else{ // 0x45b780, ground branch
+		Vector3f waypoint;
+		final switch(object.creatureAI.path.nextTarget(object.position,ultimateTargetPosition,waypoint,state.frontOfAIQueue(object.side,object.id),state)){
+			case PathResult.unreachable: // MoveTo returns -1: stop, the move is over
+				object.stopMovement(state);
+				object.stopTurning(state);
+				return true;
+			case PathResult.direct: break;
+			case PathResult.waypoint:
+				targetPosition=Vector3f(waypoint.x,waypoint.y,state.getHeight(waypoint));
+				break;
+		}
+	}
 	if(isFlying){
 		if(distancesqr>(0.1f*object.speed(state))^^2){ // TODO: replace with something in the style of the code below?
 			auto flyingHeight=object.position.z-state.getHeight(object.position);
@@ -17187,6 +17389,7 @@ void updateCreature(B)(ref MovingObject!B object, ObjectState!B state){
 		--object.creatureAI.grudgeTimer;
 		if(object.creatureAI.grudgeTimer==0) object.creatureAI.grudgeMask=0;
 	}
+	object.creatureAI.path.age=X87.toFloat(X87.add(X87.mul(1,1.0/60.0),object.creatureAI.path.age)); // 0x45a458
 	if(object.updateRescue(state)) return;
 	object.updateAlertness(state);
 	object.updateCreatureAI(state);
@@ -31721,10 +31924,6 @@ final class ObjectState(B){ // (update logic)
 		applyEdgeChanges();
 		return true;
 	}
-	bool findPath(ref Array!Vector3f path,Vector3f start,Vector3f target,float radius){
-		applyEdgeChanges();
-		return pathFinder.findPath(path,start,target,radius,this);
-	}
 	int frame=0;
 	auto rng=MinstdRand0(1); // TODO: figure out what rng to use
 	// @property uint hash(){ return rng.tupleof[0]; } // rng seed as proxy for state hash.
@@ -31985,8 +32184,6 @@ final class ObjectState(B){ // (update logic)
 		proximity.start();
 		sid.startVision();
 		frameprof.mark("visionSweep");
-		pathFinder.updateBlocked(this);
-		frameprof.mark("updateBlocked");
 		dangerGrid.start();
 		this.eachEffects!paintDangerGrid(this);
 		frameprof.mark("dangerGrid");
