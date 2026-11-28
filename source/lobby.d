@@ -1003,6 +1003,17 @@ class Lobby(B){
 		}else update(me,options.settings,true,true);
 		data.applyRules();
 	}
+	// computer players get a random name that no other player in the lobby has (unless they were named with --bot-names)
+	void nameComputers(){
+		import nttData: randomWizardName;
+		foreach(ref slot;data.slots){
+			if(slot.type!=LobbySlotType.computer||slot.name.length) continue;
+			foreach(_;0..16){
+				slot.name=randomWizardName();
+				if(data.slots.count!((ref other)=>other.name==slot.name)==1) break;
+			}
+		}
+	}
 	string playerName(int player,ref Options options){
 		auto name=network?network.players[player].settings.name:options.name;
 		return name.length?name:"Anonymous";
@@ -1074,6 +1085,7 @@ class Lobby(B){
 			}
 			network.lobbyActions.length=0;
 		}
+		nameComputers();
 		publish();
 		bool canStart=(!network||allPlayersWaiting())&&playersReady();
 		bool start=canStart&&(startRequested||!lobbyShown(options)||options.autoStart&&enoughPlayers(options));
