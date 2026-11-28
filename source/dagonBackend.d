@@ -787,6 +787,7 @@ final class SacScene: Scene{
 	void closeLobbyForm(){
 		if(!lobbyFormOpen) return;
 		lobbyFormOpen=false;
+		info.lobbyChatScroll=0;
 		forms.length=0;
 		formsReplaced();
 		disableMenu();
@@ -839,7 +840,23 @@ final class SacScene: Scene{
 			default: return false;
 		}
 	}
+	// chat: the mouse wheel scrolls three lines, the upper and lower half of the scrollbar one line
+	enum lobbyChatWheelLines=3;
+	bool lobbyChatClicked(){
+		auto sacForm=forms[0].sacForm;
+		auto scaling=renderer.defaultFormScaling(sacForm,info);
+		auto position=Vector2f((info.mouse.x-0.5f*(info.width-scaling*sacForm.width))/scaling,(info.mouse.y-0.5f*(info.height-scaling*sacForm.height))/scaling);
+		foreach(ref sacElement;sacForm.sacElements){
+			if(sacElement.id!="tahc") continue;
+			enum scrollbarWidth=24.0f;
+			if(position.x<sacElement.offset.x+sacElement.size.x-scrollbarWidth) return false;
+			info.lobbyChatScroll+=position.y<sacElement.offset.y+0.5f*sacElement.size.y?1:-1;
+			return true;
+		}
+		return false;
+	}
 	bool lobbyElementClicked(int elementIndex){
+		if(forms[0].elements[elementIndex].id=="tahc") return lobbyChatClicked();
 		auto slot=lobbySlotOfElement(elementIndex);
 		if(slot!=-1&&forms[0].elements[elementIndex].id=="eman") return lobbyPasteName(slot);
 		LobbyAction action;
@@ -1129,14 +1146,16 @@ final class SacScene: Scene{
 			if(mbDown!=0){
 				form.activeIndex=mouse.target.elementIndex;
 			}
+			if(lobbyFormOpen&&form.sacForm.tag=="ybol"&&element.id=="tahc")
+				info.lobbyChatScroll+=lobbyChatWheelLines*eventManager.mouseWheelY;
 			if(mbUp!=0){
 				if(elementIndex==form.activeIndex){
 					if(element.activate()){
 						playMenuActionSound();
 						updateForm(formIndex,form.activeIndex);
 						if(formIndex>=forms.length) return;
-					}else if(element.type==.form.ElementType.picture&&form.sacForm.tag=="ybol"){
-						if(lobbyElementClicked(elementIndex)) playMenuActionSound(); // (slot icons)
+					}else if(element.type.among(.form.ElementType.picture,.form.ElementType.textbox)&&form.sacForm.tag=="ybol"){
+						if(lobbyElementClicked(elementIndex)) playMenuActionSound(); // (slot icons, chat scrollbar)
 					}
 				}
 			}

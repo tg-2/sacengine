@@ -169,6 +169,7 @@ struct RenderInfo(B){
 	string lobbyMapFilename=null; // map shown in the lobby (preview picture)
 	const(string)[] lobbyChatMessages; // shown in the lobby ("name: message")
 	const(string)[] lobbyConfiguration; // lines shown below the map picture in the lobby
+	int lobbyChatScroll=0; // lines that the lobby chat is scrolled up (limited by the renderer, which knows the lines)
 	int lobbyNumSlots=0;
 	float loadingProgress=0.0f;
 	string loadingMapFolder=null;
@@ -6109,16 +6110,19 @@ struct Renderer(B){
 		auto sacForm=form.sacForm;
 		if(sacForm.tag!="ybol") return;
 		foreach(ref sacElement;sacForm.sacElements){
-			if(sacElement.id=="tahc") renderLobbyLines(sacForm,sacElement.offset,sacElement.size,info.lobbyChatMessages,true,info,rc);
+			if(sacElement.id=="tahc") renderLobbyLines(sacForm,sacElement.offset,sacElement.size,info.lobbyChatMessages,true,info,rc,&info.lobbyChatScroll);
 			if(sacElement.id!="iPAM"||sacElement.subForms.length!=1) continue;
 			foreach(ref mapElement;sacElement.subForms[0].form.sacElements){ // game configuration (below the map picture)
 				enum titleHeight=8.0f;
-				if(mapElement.id=="PYTG") renderLobbyLines(sacForm,sacElement.subForms[0].offset+mapElement.offset+Vector2f(0.0f,titleHeight),mapElement.size-Vector2f(0.0f,titleHeight),info.lobbyConfiguration,false,info,rc);
+				if(mapElement.id=="PYTG") renderLobbyLines(sacForm,sacElement.subForms[0].offset+mapElement.offset+Vector2f(0.0f,titleHeight),mapElement.size-Vector2f(0.0f,titleHeight),info.lobbyConfiguration,false,info,rc,null);
 			}
 		}
 	}
 	// lines of text in a textbox of the lobby form (given relative to the form), broken to fit: the first lines, or the last ones (bottom)
-	void renderLobbyLines(SacForm!B sacForm,Vector2f position,Vector2f size,const(string)[] lines,bool bottom,ref RenderInfo!B info,B.RenderContext rc){
+	// the last ones can be scrolled up by *scroll lines, the lines in view stay the same when further lines are added
+	size_t lobbyLinesScrolled=0; // (number of lines when the text was scrolled up)
+	void renderLobbyLines(SacForm!B sacForm,Vector2f position,Vector2f size,const(string)[] lines,bool bottom,ref RenderInfo!B info,B.RenderContext rc,int* scroll){
+		if(scroll&&!lines.length) *scroll=0;
 		if(!lines.length) return;
 		auto scaling=defaultFormScaling(sacForm,info);
 		auto offset=Vector2f(0.5f*(info.width-scaling*sacForm.width),0.5f*(info.height-scaling*sacForm.height));
@@ -6129,8 +6133,16 @@ struct Renderer(B){
 		int maxLines=cast(int)(height/font.lineHeight);
 		size_t first=bottom?lines.length:0;
 		int numLines=0;
-		if(bottom) while(first>0&&numLines<maxLines) numLines+=countLines(font,lines[--first],width);
-		int skip=max(0,numLines-maxLines); // (lines of the first shown message that do not fit)
+		int scrolled=0;
+		if(scroll){
+			if(*scroll>0&&lobbyLinesScrolled<lines.length)
+				foreach(line;lines[lobbyLinesScrolled..$]) *scroll+=countLines(font,line,width);
+			lobbyLinesScrolled=lines.length;
+			scrolled=max(0,*scroll);
+		}
+		if(bottom) while(first>0&&numLines<maxLines+scrolled) numLines+=countLines(font,lines[--first],width);
+		if(scroll) *scroll=scrolled=min(scrolled,max(0,numLines-maxLines));
+		int skip=max(0,numLines-maxLines-scrolled); // (lines of the first shown message that are above the box)
 		int shown=0;
 		FormatSettings settings={flowType:FlowType.left,scale:scaling};
 		bindFont(font,rc);
