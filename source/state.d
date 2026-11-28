@@ -2898,16 +2898,18 @@ struct ParticleContext(B){
 	auto uniformDirection(T=float,int n=3)(){ return rng.uniformDirection!(T,n)(); }
 	auto uniformDisk(T=float,int n=3)(Vector!(T,n) position,float radius){ return rng.uniformDisk!(T,n)(position,radius); }
 	auto normal(T=float)(){ return rng.normal!T(); }
+	// terrain queries see the terrain at the emission (the particle function declares fTerrain)
+	enum noTerrainMessage="terrain query without terrain history: declare fTerrain for the particle function";
 	bool isOnGround(Vector3f position){
-		if(!terrain) return state_.isOnGround(position);
+		assert(terrain,noTerrainMessage);
 		return state_.map.isOnGroundWith(position,EmitterTerrain!B.Edges(terrain));
 	}
 	float getGroundHeight(Vector3f position){
-		if(!terrain) return state_.getGroundHeight(position);
+		assert(terrain,noTerrainMessage);
 		return state_.map.getGroundHeightWith(position,*terrain,EmitterTerrain!B.Edges(terrain));
 	}
 	float getHeight(Vector3f position){
-		if(!terrain) return state_.getHeight(position);
+		assert(terrain,noTerrainMessage);
 		return state_.map.getHeightWith(position,*terrain,EmitterTerrain!B.Edges(terrain));
 	}
 	void addParticle(ParticleKind kind,bool sideFiltered)(Particle!(B,kind,sideFiltered) particle){
@@ -3092,7 +3094,9 @@ void callParticleFunction(B)(int index,ref ubyte[maxParticleArgsSize] args,Parti
 // - the longest lifetime: @particleLifetime(frames), or a function fMaxLifetime(B)(args) (same arguments as f),
 // - for particles that bump off the ground: fReach(B)(args), the horizontal box they can reach (start box grown by
 //   the largest horizontal speed times the longest lifetime; bounces only change the vertical velocity).
-// Terrain queries of particle functions use the current terrain, unless the emitter records the terrain anyway.
+// - for particle functions that query the terrain (state.getHeight, getGroundHeight, isOnGround): fTerrain(B)(args),
+//   the horizontal box that contains all queried positions. The emitter then records the terrain there, and the
+//   queries see the terrain as it was at the emission (particles only depend on the game state at the emission).
 struct particleLifetime{ int frames; }
 int particleMaxLifetime(alias f,B,P...)(P args){
 	enum name=__traits(identifier,f);
@@ -3141,6 +3145,16 @@ bool particleReach(alias f,B,P...)(out Vector3f[2] box,P args){
 		return !isNaN(box[0].x);
 	}else return false;
 }
+bool particleTerrain(alias f,B,P...)(out Vector3f[2] box,P args){
+	enum name=__traits(identifier,f);
+	static if(__traits(compiles,mixin(name~"Terrain!B"))){
+		box=mixin(name~"Terrain!B")(args);
+		return true;
+	}else return false;
+}
+Vector3f[2] boxUnion(Vector3f[2] a,Vector3f[2] b){
+	return [Vector3f(min(a[0].x,b[0].x),min(a[0].y,b[0].y),min(a[0].z,b[0].z)),Vector3f(max(a[1].x,b[1].x),max(a[1].y,b[1].y),max(a[1].z,b[1].z))];
+}
 int[4] terrainRectangle(Vector3f[2] box,bool[][] edges){ // the vertices [i0,i1]×[j0,j1] around a box, clamped to the map
 	int clampJ(int j){ return max(0,min(j,cast(int)edges.length-1)); }
 	int clampI(int i){ return max(0,min(i,cast(int)edges[0].length-1)); }
@@ -3176,10 +3190,11 @@ void continueParticles(alias f,B,T...)(ObjectState!B state,ref int emitter,T arg
 	ubyte[maxParticleArgsSize] packed;
 	packParticleArgs!P(packed,params);
 	auto maxLifetime=particleMaxLifetime!(f,B)(params);
-	Vector3f[2] reach;
+	Vector3f[2] reach,queried;
 	bool bounces=particleReach!(f,B)(reach,params);
+	bool queries=particleTerrain!(f,B)(queried,params);
 	int[4] rect;
-	if(bounces) rect=terrainRectangle(reach,state.map.edges);
+	if(bounces||queries) rect=terrainRectangle(bounces&&queries?boxUnion(reach,queried):bounces?reach:queried,state.map.edges);
 	auto emitters=&state.obj.opaqueObjects.particleEmitters;
 	bool updated=emitters.updateFrame==state.frame;
 	auto birth=updated?state.frame:state.frame-1;
@@ -3189,7 +3204,7 @@ void continueParticles(alias f,B,T...)(ObjectState!B state,ref int emitter,T arg
 	int maxGroup=0;
 	foreach(k;0..numParts){
 		groups[k]=particlePartGroup!(f,B)(k,params);
-		tracksTerrain[k]=bounces&&SacParticle!B.bumpsOffGround(particleTypeOfGroup(groups[k]));
+		tracksTerrain[k]=queries||bounces&&SacParticle!B.bumpsOffGround(particleTypeOfGroup(groups[k]));
 		maxGroup=max(maxGroup,groups[k]);
 	}
 	emitters.group(maxGroup); // allocate the groups before taking pointers into them
@@ -3233,6 +3248,7 @@ void continueParticles(alias f,B,T...)(ObjectState!B state,ref int emitter,T arg
 			auto group=&emitters.groups[groups[k]];
 			*group~=move(newEmitter);
 			current[k]=&(*group)[$-1];
+			if(tracksTerrain[k]) recordTerrain(*current[k],state); // the terrain at the emission
 		}
 	}
 	foreach(k;0..numParts) current[k].maxLifetime=max(current[k].maxLifetime,maxLifetime);
@@ -3248,7 +3264,9 @@ void recordTerrain(B)(ref ParticleEmitter!B emitter,ObjectState!B state){
 	if(emitter.terrainRuns.length&&!transient&&key==emitter.terrainKey) return;
 	emitter.terrainKey=key;
 	state.applyEdgeChanges();
-	auto displacement=ObjectState!B.Displacement(state);
+	// only the effects that can reach the recorded vertices (same values as ObjectState!B.Displacement)
+	auto displacement=ObjectState!B.Displacement(state).restrictedTo(10.0f*emitter.terrainI,10.0f*emitter.terrainJ,
+		10.0f*(emitter.terrainI+emitter.terrainWidth-1),10.0f*(emitter.terrainJ+emitter.terrainHeight-1));
 	auto edges=state.map.edges;
 	auto offset=cast(int)emitter.terrainDisplacements.length;
 	auto heights=state.map.heights;
@@ -3346,9 +3364,14 @@ struct EmitterTerrain(B){
 	bool set(int frame){ // false if no terrain was recorded
 		auto runs=emitter.terrainRuns.data;
 		if(!runs.length) return false;
-		int k=0;
-		while(k+1<runs.length&&runs[k+1].frame<=frame) k++;
-		offset=runs[k].offset;
+		// last run with runs[k].frame<=frame (or the first one)
+		int l=0,r=cast(int)runs.length-1;
+		while(l<r){
+			auto m=(l+r+1)/2;
+			if(runs[m].frame<=frame) l=m;
+			else r=m-1;
+		}
+		offset=runs[l].offset;
 		return true;
 	}
 }
@@ -13189,6 +13212,7 @@ bool getMeanstalkGroundPos(B)(ref Vector3f position,ObjectState!B state){
 void animateMeanstalkSpawn(B)(Vector3f position,ObjectState!B state){
 	state.emitParticles!meanstalkSpawnParticles(position);
 }
+Vector3f[2] meanstalkSpawnParticlesTerrain(B)(Vector3f position){ return grownBox(position,5.0f/1.5f); } // queried terrain
 @particleLifetime(159) @particleType(ParticleType.dirt) void meanstalkSpawnParticles(B)(Vector3f position,ParticleContext!B state){
 	enum numParticles=64;
 	auto sacParticle=SacParticle!B.get(ParticleType.dirt);
@@ -20266,6 +20290,7 @@ void animateGraspingVinesCastingTarget(B)(ref MovingObject!B obj,ObjectState!B s
 	hitbox[0].z=0.0f;
 	state.emitParticles!graspingVinesCastingTargetParticles(hitbox,0.6f*getScale(obj).length);
 }
+Vector3f[2] graspingVinesCastingTargetParticlesTerrain(B)(Vector3f[2] hitbox,float scale){ return hitbox; } // queried terrain
 @particleLifetime(31) @particleType(ParticleType.dirt) void graspingVinesCastingTargetParticles(B)(Vector3f[2] hitbox,float scale,ParticleContext!B state){
 	enum numParticles=16;
 	auto sacParticle=SacParticle!B.get(ParticleType.dirt);
@@ -20847,6 +20872,7 @@ Vector3f[2] rockBurstParticlesReach(B)(Vector3f position,int numParticles,float 
 		state.addParticle(Particle!B(sacParticle,pposition,velocity,scale,lifetime,frame));
 	}
 }
+Vector3f[2] eruptDustParticlesTerrain(B)(Vector3f eruptPosition,float range,float damageRange){ return grownBox(eruptPosition,max(abs(range),abs(damageRange))); } // queried terrain
 @particleLifetime(31) @particleType(ParticleType.dust) void eruptDustParticles(B)(Vector3f eruptPosition,float range,float damageRange,ParticleContext!B state){
 	enum numParticles=24;
 	auto sacParticle=SacParticle!B.get(ParticleType.dust);
@@ -22301,6 +22327,7 @@ bool updateFrozenGroundSnowball(B)(ref FrozenGroundSnowball!B frozenGroundSnowba
 		return true;
 	}
 }
+Vector3f[2] frozenGroundShardParticlesTerrain(B)(Vector3f center,float prevDist,float curDist){ return grownBox(center,max(abs(prevDist),abs(curDist))); } // queried terrain
 @particleLifetime(31) @particleType(ParticleType.shard) void frozenGroundShardParticles(B)(Vector3f center,float prevDist,float curDist,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.shard);
 	enum numParticles=150;
@@ -22464,6 +22491,7 @@ void wallTargets(alias f,alias filter=None,bool keepNonObstacles=false,B,T...)(W
 enum firewallGain=3.0f;
 // a flame where a growing firewall reaches
 int firewallGrowthParticlesMaxLifetime(B)(Vector3f base,Vector2f direction){ return 2*SacParticle!B.get(ParticleType.firy).numFrames; }
+Vector3f[2] firewallGrowthParticlesTerrain(B)(Vector3f base,Vector2f direction){ return grownBox(base,(0.9f+0.45f*Firewall!B.wallThickness)*direction.length); } // queried terrain
 @particleType(ParticleType.firy) void firewallGrowthParticles(B)(Vector3f base,Vector2f direction,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.firy);
 	auto numFrames=sacParticle.numFrames;
@@ -22477,6 +22505,7 @@ int firewallGrowthParticlesMaxLifetime(B)(Vector3f base,Vector2f direction){ ret
 }
 // the flames of a firewall (see Firewall.get, scale and height)
 int firewallParticlesMaxLifetime(B)(Vector3f center,Vector2f direction,float left,float right,float top,int wallFrame){ return SacParticle!B.get(ParticleType.firewall).numFrames; }
+Vector3f[2] firewallParticlesTerrain(B)(Vector3f center,Vector2f direction,float left,float right,float top,int wallFrame){ return boxAround(center+left*Vector3f(direction.x,direction.y,0.0f),center+right*Vector3f(direction.x,direction.y,0.0f),0.0f); } // queried terrain
 @particleType(ParticleType.firewall) void firewallParticles(B)(Vector3f center,Vector2f direction,float left,float right,float top,int wallFrame,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.firewall);
 	auto numFrames=sacParticle.numFrames;
@@ -22821,6 +22850,7 @@ Vector3f vinewallVineSpawnPosition(B)(ref Vinewall!B vinewall,ObjectState!B stat
 
 // five particles around something that grows out of the ground
 int sproutParticlesParticleGroup(B)(Vector3f base,ParticleType type,float size){ return particleGroup(type); }
+Vector3f[2] sproutParticlesTerrain(B)(Vector3f base,ParticleType type,float size){ return grownBox(base,0.5f*abs(size)); } // queried terrain
 @particleLifetime(31) void sproutParticles(B)(Vector3f base,ParticleType type,float size,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(type);
 	enum numParticles=5;
@@ -23039,6 +23069,7 @@ bool wallOfSpikesSpike(B)(ref MovingObject!B obj,ref WallOfSpikes!B wallOfSpikes
 	state.emitParticles!spikeHitParticles(spikePosition,wallOfSpikes.spikeScale);
 	return true;
 }
+Vector3f[2] spikeHitParticlesTerrain(B)(Vector3f spikePosition,float spikeScale){ return grownBox(spikePosition,1.5f*abs(spikeScale)); } // queried terrain
 @particleLifetime(63) @particleType(ParticleType.dirt) void spikeHitParticles(B)(Vector3f spikePosition,float spikeScale,ParticleContext!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.dirt);
 	enum numParticles=25;
@@ -24147,6 +24178,7 @@ void animateGroundForCow(B)(Vector3f position,int frame,ObjectState!B state){
 	state.emitParticles!groundForCowParticles(position);
 	if(frame%(updateFPS/10)==0) state.addEffect(ScreenShake(position,updateFPS/10,0.2f*float(frame+updateFPS/6)/updateFPS,60.0f));
 }
+Vector3f[2] groundForCowParticlesTerrain(B)(Vector3f position){ return grownBox(position,3.0f); } // queried terrain
 @particleLifetime(31) @particleType(ParticleType.dirt) void groundForCowParticles(B)(Vector3f position,ParticleContext!B state){
 	enum range=3.0f;
 	enum numParticles=3;
@@ -31508,14 +31540,19 @@ final class ObjectState(B){ // (update logic)
 			foreach(ref td;state.obj.opaqueObjects.effects.testDisplacements.data){
 				result+=td.displacement(x,y);
 			}
+			// effects contribute exactly 0.0f outside their displacementRadius (see restrictedTo): skip them
+			static bool reaches(Vector3f center,float radius,float x,float y){
+				auto dx=x-center.x, dy=y-center.y;
+				return dx*dx+dy*dy<=radius*radius;
+			}
 			foreach(ref ec;state.obj.opaqueObjects.effects.eruptCastings.data){
-				result+=ec.erupt.displacement(x,y);
+				if(reaches(ec.erupt.position,Erupt!B.displacementRadius,x,y)) result+=ec.erupt.displacement(x,y);
 			}
 			foreach(ref e;state.obj.opaqueObjects.effects.erupts.data){
-				result+=e.displacement(x,y);
+				if(reaches(e.position,Erupt!B.displacementRadius,x,y)) result+=e.displacement(x,y);
 			}
 			foreach(ref e;state.obj.opaqueObjects.effects.quakes.data){
-				result+=e.displacement(x,y);
+				if(reaches(e.position,Quake!B.displacementRadius,x,y)) result+=e.displacement(x,y);
 			}
 			return result;
 		}
