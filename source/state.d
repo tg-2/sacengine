@@ -12189,8 +12189,10 @@ bool guardian(B)(int side,SacSpell!B spell,int target,ObjectState!B state){
 			return false;
 		obj.unselect(state);
 		obj.removeFromGroups(state);
-		obj.clearOrderQueue(state);
+		obj.clearOrderQueue(state); // original 0x45e840: order 5 (guard object) on the building replaces all orders
+		obj.creatureAI.targetId=0;
 		obj.creatureStats.effects.isGuardian=true;
+		obj.creatureStats.effects.guardianBuilding=buildingId;
 		state.addEffect(Guardian(obj.id,buildingId));
 		return true;
 	},()=>false)(target,side,state);
@@ -14742,6 +14744,8 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 		target=meleeAttackTarget(object,state); // TODO: share melee hitbox computation?
 		if(target&&target!=targetId&&!isValidEnemyAttackTarget(targetId,object.side,state))
 			target=0;
+		if(target&&!object.isInGuardianRange(targetId,state)) // 0x4950d0
+			target=0;
 	}
 	auto targetHitbox=state.objectById!((ref obj,meleeHitboxCenter,attackerSide){
 		static if(is(typeof(obj)==MovingObject!B)){
@@ -14957,6 +14961,117 @@ bool advance(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B 
 		if(object.retreatFromDanger(state)||object.attack(object.creatureAI.targetId,state))
 			return true;
 	return false;
+}
+
+// Guardian spell, as in the original (GuardianSpellRun 0x45ef10, 0x45e840, 0x45e980, 0x493eb4, 0x494d60,
+// 0x494fd0, 0x4950d0): the guardian has order 5 ("guard object") on its building and picks targets with the
+// guard-object rule centred on the building's position. Melee guardians only consider and only hit targets
+// whose feet are within 50 (3D) of the building's position. Ranged guardians consider targets within
+// 10 + range of the building's position. A guardian more than 50 from the building drops its target and
+// orders (see updateGuardian) and walks back.
+enum guardianLeashRange=50.0f; // 0x4c0200: 2500
+
+Vector3f guardianBuildingPosition(B)(ref MovingObject!B object,ObjectState!B state){
+	auto building=object.creatureStats.effects.guardianBuilding;
+	if(!building) return Vector3f.init;
+	return state.buildingById!((ref bldg,state)=>bldg.position(state),()=>Vector3f.init)(building,state);
+}
+
+// 0x4950d0: a guardian does not hit a melee target more than 50 from its building.
+bool isInGuardianRange(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
+	if(!object.isGuardian) return true;
+	auto buildingPosition=object.guardianBuildingPosition(state);
+	if(isNaN(buildingPosition.x)||!state.isValidTarget(targetId)) return true;
+	auto targetPosition=state.objectById!((ref obj)=>obj.position)(targetId);
+	return (targetPosition-buildingPosition).lengthsqr<=guardianLeashRange^^2;
+}
+
+float guardianTargetValue(B)(ref CenterProximityEntry entry,Vector3f center,float range,bool ranged,int lastAttackerId,int currentTargetId,ObjectState!B state){
+	auto position=Vector3f(entry.position.x,entry.position.y,entry.height); // feet
+	auto distancesqr=(position-center).lengthsqr;
+	float value;
+	if(ranged){ // 0x494d60: hostile ability, reach 10, limit checked before the bonuses
+		auto limit=10.0f+range;
+		if(distancesqr>limit^^2) return -1.0f;
+		value=1.0f-0.5f*distancesqr/limit^^2;
+	}else{
+		if(distancesqr>guardianLeashRange^^2) return -1.0f; // 0x494fd0
+		auto distance=sqrt(distancesqr);
+		auto near=distance<range?1.0f-0.75f*distance/range:0.25f*range/distance;
+		value=near*near*state.dangerGrid.dangerFactor(entry.position);
+	}
+	if(entry.id==lastAttackerId) value*=1.2f;
+	if(entry.id==currentTargetId) value*=1.3f;
+	return value;
+}
+
+int updateGuardianTarget(B)(ref MovingObject!B object,Vector3f buildingPosition,ObjectState!B state){
+	static bool filter(ref CenterProximityEntry entry,int side,ObjectState!B state,Vector3f center,float range,bool ranged,float threshold,int lastAttackerId,int currentTargetId){
+		if(!state.isVisibleToSide(side,entry.id,entry.side)) return false;
+		// the threshold is compared with the value before the ranking scale (0x494bd2)
+		return guardianTargetValue(entry,center,range,ranged,lastAttackerId,currentTargetId,state)>threshold;
+	}
+	static float priority(T...)(ref CenterProximityEntry entry,T args){
+		auto state=args[$-7];
+		auto center=args[$-6], range=args[$-5], ranged=args[$-4];
+		auto lastAttackerId=args[$-2], currentTargetId=args[$-1];
+		auto value=guardianTargetValue(entry,center,range,ranged,lastAttackerId,currentTargetId,state);
+		if(entry.isStatic) return value; // buildings: scale 1
+		return value*(ranged?2.0f:1.25f); // creatures: 1.25 (melee), 2 (abilities)
+	}
+	static bool scarabFilter(ref CenterProximityEntry entry,ObjectState!B state,Vector3f center,float limit){
+		if(!entry.isVisibleToAI) return false;
+		if((Vector3f(entry.position.x,entry.position.y,entry.height)-center).lengthsqr>limit^^2) return false;
+		if(state.movingObjectById!((ref obj)=>obj.creatureStats.health==obj.creatureStats.maxHealth,()=>true)(entry.id))
+			return false;
+		return true;
+	}
+	enum queryMargin=50.0f; // proximity entries are hitbox centres; the exact test uses the feet
+	if(state.frontOfAIQueue(object.side,object.id)){
+		auto ra=object.rangedAttack;
+		if(ra&&ra.tag==SpellTag.scarabShoot){
+			auto limit=10.0f+ra.range;
+			object.creatureAI.targetId=state.proximity.lowestHealthCreatureInRange!scarabFilter(object.side,object.id,buildingPosition,limit+queryMargin,state,state,buildingPosition,limit);
+		}else{
+			// 0x493eb4: guard object; d = creature's distance from the guarded object
+			auto creatureDistance=sqrt((object.position-buildingPosition).lengthsqr);
+			auto n=creatureDistance<100.0f?1.0f-0.0075f*creatureDistance:25.0f/creatureDistance;
+			auto threshold=1.0f-n*n;
+			auto sideType=state.sideType(object.side);
+			if(sideType==SideType.shinyBot) threshold*=1.0f/3.0f; // 0x4c1164: side with a computer controller
+			bool ranged=!!ra;
+			// range 50 for creatures of a human wizard (wizard +0xb80 = 0), 100 otherwise
+			float range=ranged?ra.range:sideType==SideType.human?50.0f:100.0f;
+			float maxHeight=ranged?float.infinity:object.maxTargetHeight(state);
+			auto queryRadius=(ranged?10.0f+range:guardianLeashRange)+queryMargin;
+			auto lastAttackerId=object.creatureAI.lastAttackerId, currentTargetId=object.creatureAI.targetId;
+			object.creatureAI.targetId=state.proximity.closestEnemyInRange!(filter,priority)(object.side,buildingPosition,queryRadius,EnemyType.all,state,maxHeight,object.side,state,buildingPosition,range,ranged,threshold,lastAttackerId,currentTargetId);
+		}
+	}
+	if(!state.isValidTarget(object.creatureAI.targetId)) object.creatureAI.targetId=0;
+	return object.creatureAI.targetId;
+}
+
+bool guardBuilding(B)(ref MovingObject!B object,ObjectState!B state){
+	auto building=object.creatureStats.effects.guardianBuilding;
+	auto buildingPosition=object.guardianBuildingPosition(state);
+	if(isNaN(buildingPosition.x)) return false;
+	if(!state.trig.cinematics&&object.isAggressive(state)){
+		if(auto targetId=object.updateGuardianTarget(buildingPosition,state))
+			if(object.retreatFromDanger(state)||object.attack(targetId,state))
+				return true;
+	}else object.creatureAI.targetId=0;
+	// order 5 executor (0x46e022): approach the guarded object's position until within its radius + 10
+	auto radius=state.buildingById!((ref bldg,state)=>bldg.boundingRadius(state),()=>0.0f)(building,state);
+	if(!object.moveWithinRange2D(buildingPosition,radius+10.0f,state)){
+		object.stopMovement(state);
+		object.stopTurning(state);
+		if(object.creatureState.movement==CreatureMovement.flying){
+			object.creatureState.targetFlyingHeight=float.nan;
+			object.pitch(0.0f,state);
+		}
+	}
+	return true;
 }
 
 bool runAway(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
@@ -15994,6 +16109,7 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 				object.stop(state);
 				break;
 			}
+			if(object.isGuardian&&object.guardBuilding(state)) break;
 			if(object.sacObject.hasPeasantFSM) object.absorbHerdGrudges(state);
 			if(object.isPeasant){
 				if(auto shelter=state.proximity.closestPeasantShelterInRange(object.side,object.position,shelterDistance,state)){
@@ -17620,6 +17736,7 @@ bool unguardian(B)(ref Guardian guardian,ObjectState!B state){
 	return state.movingObjectById!((ref obj,state){
 		if(!obj.creatureStats.effects.isGuardian) return false;
 		obj.creatureStats.effects.isGuardian=false;
+		obj.creatureStats.effects.guardianBuilding=0;
 		return true;
 	},()=>false)(guardian.creature,state)
 		& state.buildingById!((ref bldg,creature,state){
@@ -17675,18 +17792,15 @@ bool updateGuardian(B)(ref Guardian guardian,ObjectState!B state){
 			unguardian(guardian,state);
 			return false;
 		}
-		if((creaturePosition-buildingPosition).lengthsqr>50.0f^^2){
-			auto dir=(creaturePosition-buildingPosition).normalized;
-			auto position=buildingPosition+20.0f*dir;
-			position.z=state.getHeight(position);
-			auto facing=atan2(dir.x,-dir.y);
-			auto order=Order(CommandType.move,OrderTarget(TargetType.terrain,0,position),facing);
-			state.movingObjectById!((ref obj,order,state){
-				if(obj.creatureAI.order.command==CommandType.move&&(obj.creatureAI.order.target.position-buildingPosition).lengthsqr<50.0f^^2)
-					return true;
-				return obj.order(order,state);
-			},()=>false)(creature,order,state);
-		}
+		// original 0x45e980: if the creature's feet are more than 50 (3D) from the building's position and its
+		// current order is not "guard the building", the guard order is issued again, dropping other orders and
+		// the automatically chosen target. Here "guard the building" is a guardian with no order (guardBuilding).
+		auto buildingBase=state.buildingById!((ref bldg,state)=>bldg.position(state),()=>Vector3f.init)(building,state);
+		state.movingObjectById!((ref obj,buildingBase,state){
+			if((obj.position-buildingBase).lengthsqr<=guardianLeashRange^^2) return;
+			obj.creatureAI.targetId=0;
+			if(!obj.creatureAI.order.command.among(CommandType.none,CommandType.cinematicIdle)) obj.clearOrderQueue(state);
+		},(){})(creature,buildingBase,state);
 		with(GuardianStatus) if(status.among(disappearingAtBuilding,disappearingAtCreature)&&frame==numFramesToDisappear){
 			unguardian(guardian,state);
 			return false;
@@ -31443,6 +31557,10 @@ final class ObjectState(B){ // (update logic)
 	float incomingDamageMultiplier(int side){
 		if(!(0<=side&&side<sid.sides.length)) return 1.0f;
 		return sid.sides[side].damageFactor;
+	}
+	SideType sideType(int side){
+		if(!(0<=side&&side<sid.sides.length)) return SideType.neutral;
+		return sid.sides[side].sideType;
 	}
 	void setStance(int from,int towards,Stance stance){
 		if(from<0||from>=sid.sides.length||towards<0||towards>=sid.sides.length) return;
