@@ -6215,12 +6215,12 @@ struct Renderer(B){
 		renderSacForm(sacForm,info,rc);+/
 		/+auto formInstance=sacFormInstance!B("thci");
 		renderForm(formInstance,info,rc);+/
-		foreach(i,ref form;forms){
-			renderForm(form,to!ushort(i),info,rc);
-		}
 		B.colorHUDMaterialBackend.unbind(null,rc);
-		foreach(ref form;forms){
-			renderLobbyChat(form,info,rc);
+		foreach(i,ref form;forms){
+			B.colorHUDMaterialBackend.bind(null,rc);
+			renderForm(form,to!ushort(i),info,rc);
+			B.colorHUDMaterialBackend.unbind(null,rc);
+			renderLobbyChat(form,info,rc); // (below the forms that follow, e.g. a dialog)
 			renderLobbySlotNumbers(form,info,rc);
 		}
 	}

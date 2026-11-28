@@ -43,6 +43,7 @@ enum LobbyActionType{
 	toggleReady,
 	takeSlot, // move to an open slot, or swap slots with a computer player (host: also with another player)
 	toggleComputer, // add or remove a computer player
+	boot, // the host removes a player from the game
 	chat,
 	emote, // chat command /me: "* name text"
 	start,
@@ -128,9 +129,10 @@ struct LobbyData{
 		if(action.type<LobbyActionType.min||action.type>LobbyActionType.max) return false;
 		auto own=slotOf(player);
 		final switch(action.type) with(LobbyActionType){
-			case nextGod,nextTeam,toggleReady,takeSlot,toggleComputer:
+			case nextGod,nextTeam,toggleReady,takeSlot,toggleComputer,boot:
 				if(action.slot<0||action.slot>=slots.length) return false;
 				auto type=slots[action.slot].type;
+				if(action.type==boot) return host&&type==LobbySlotType.human&&action.slot!=own;
 				if(action.type==toggleReady) return action.slot==own;
 				bool computer=host&&type==LobbySlotType.computer;
 				if(action.type==nextGod) return action.slot==own||computer; // (fixed god: observe or not)
@@ -795,14 +797,16 @@ class Lobby(B){
 		return true;
 	}
 
+	bool booted=false;
 	bool update(ref Options options)in{
 		with(LobbyState)
 		assert(state.among(offline,connected,synched,commitHashReady,waitingForClients,readyToLoad));
 	}do{
 		//writeln(state," ",network.players.map!((ref p)=>p.status));
-		if(network&&!isHost&&network.hostDropped){ // (before the game has started)
+		if(network&&!isHost&&network.me!=-1&&network.players[network.me].status==PlayerStatus.dropped) booted=true; // (by the host)
+		if(network&&!isHost&&(booted||network.hostDropped)){ // (before the game has started)
 			B.hideLobby();
-			B.showHostQuit();
+			B.showLobbyClosed(booted);
 			return false;
 		}
 		if(network){
@@ -1081,6 +1085,9 @@ class Lobby(B){
 				import std.utf: validate;
 				validate(action.text);
 				say(text("* ",playerName(player,options)," ",action.text));
+				break;
+			case LobbyActionType.boot: // (the others see that the player has left)
+				if(network) network.kickPlayer(data.slots[action.slot].player,null);
 				break;
 			case LobbyActionType.start: startRequested=true; break;
 			default: data.apply(player,host,action); break;

@@ -787,6 +787,7 @@ final class SacScene: Scene{
 	void closeLobbyForm(){
 		if(!lobbyFormOpen) return;
 		lobbyFormOpen=false;
+		lobbyBootSlot=-1;
 		info.lobbyChatScroll=0;
 		forms.length=0;
 		formsReplaced();
@@ -801,15 +802,42 @@ final class SacScene: Scene{
 	bool formTargetValid(){
 		return mouse.target.type!=TargetType.formElement||mouse.target.formIndex<forms.length&&mouse.target.elementIndex<forms[mouse.target.formIndex].elements.length;
 	}
-	// the host left before the game started: window of the original (form hqut), its button quits
+	// the host left before the game started, or booted this player: window of the original (form hqut or boot), its button quits
 	bool hostQuitFormOpen=false;
-	void showHostQuit(){
+	void showLobbyClosed(bool booted){
 		if(hostQuitFormOpen) return;
 		closeLobbyForm();
 		forms.length=0;
-		forms~=sacFormInstance!DagonBackend("tuqh");
+		forms~=sacFormInstance!DagonBackend(booted?"toob":"tuqh");
 		hostQuitFormOpen=true;
 		enableMenu();
+	}
+	// the host boots a player by clicking the type icon of the slot, after confirming it (form BOOT of the original)
+	int lobbyBootSlot=-1, lobbyBootPlayer=-1;
+	void closeLobbyBootForm(){
+		if(lobbyBootSlot==-1) return;
+		lobbyBootSlot=-1;
+		if(forms.length>1) forms.length=1;
+		formsReplaced();
+	}
+	bool askLobbyBoot(int slot){
+		auto data=lobbyView.data;
+		auto action=LobbyAction(LobbyActionType.boot,slot);
+		if(lobbyBootSlot!=-1||!lobbyView.allowed(action)) return false;
+		forms~=sacFormInstance!DagonBackend("TOOB");
+		foreach(ref element;forms[$-1].elements.data){
+			if(element.id!="?OOB") continue;
+			import std.format: format;
+			auto name=data.slots[slot].name.length?data.slots[slot].name:"Anonymous";
+			string question=formTexts.get("?OOB","Are you sure you want to boot %s?");
+			try question=format(question,name);
+			catch(Exception e){}
+			foreach(char c;question) element.textInput~=c;
+			element.textEnd=to!int(element.textInput.length);
+		}
+		lobbyBootSlot=slot;
+		lobbyBootPlayer=data.slots[slot].player;
+		return true;
 	}
 	static string lobbyGodName(ref const LobbySlot slot){
 		static immutable godNames=["Custom","Persephone","Pyro","James","Stratos","Charnel"];
@@ -859,6 +887,7 @@ final class SacScene: Scene{
 		if(forms[0].elements[elementIndex].id=="tahc") return lobbyChatClicked();
 		auto slot=lobbySlotOfElement(elementIndex);
 		if(slot!=-1&&forms[0].elements[elementIndex].id=="eman") return lobbyPasteName(slot);
+		if(slot!=-1&&forms[0].elements[elementIndex].id=="epyt"&&askLobbyBoot(slot)) return true;
 		LobbyAction action;
 		if(slot==-1||!lobbySlotAction(forms[0].elements[elementIndex].id,slot,action)) return false;
 		return lobbyAction(action);
@@ -930,6 +959,7 @@ final class SacScene: Scene{
 		}
 		updateLobbyConfiguration();
 		info.lobbyConfiguration=lobbyConfiguration;
+		if(lobbyBootSlot!=-1&&data.slotOf(lobbyBootPlayer)!=lobbyBootSlot) closeLobbyBootForm(); // (the player left or moved)
 		auto numSlots=to!int(data.slots.length);
 		info.lobbyNumSlots=min(numSlots,data.gameSlots); // (numbered slots)
 		auto formSlots=SacForm!DagonBackend.lobby(numSlots).height; // (the form only changes for more than five slots)
@@ -1113,7 +1143,14 @@ final class SacScene: Scene{
 					else lobbyElementClicked(elementIndex);
 				}
 				break;
-			case "tuqh": // host has quit
+			case "TOOB": // boot a player?
+				if(elementIndex<forms[formIndex].elements.length){
+					auto id=forms[formIndex].elements[elementIndex].id;
+					if(id=="TOOB") lobbyAction(LobbyAction(LobbyActionType.boot,lobbyBootSlot));
+					if(id=="TOOB"||id=="TNOD") closeLobbyBootForm();
+				}
+				break;
+			case "tuqh","toob": // host has quit, booted by the host
 				if(elementIndex<forms[formIndex].elements.length&&forms[formIndex].elements[elementIndex].id=="tuqh")
 					DagonBackend.app.exit();
 				break;
@@ -3174,7 +3211,7 @@ static:
 	// lobby screen: shows the lobby and collects the actions of this player for it
 	void showLobby(LobbyView view){ scene.showLobby(view); }
 	void hideLobby(){ scene.hideLobby(); }
-	void showHostQuit(){ scene.showHostQuit(); }
+	void showLobbyClosed(bool booted){ scene.showLobbyClosed(booted); }
 	ref lobbyActions(){ return scene.lobbyActions; }
 	void focusCamera(int id,bool reset=true){
 		scene.focusCamera(id,reset);
