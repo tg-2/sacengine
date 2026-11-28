@@ -858,14 +858,61 @@ final class SacScene: Scene{
 		}
 		return false;
 	}
+	// game configuration shown below the map picture, with the texts of the original's game settings
+	LobbySettings lobbyConfigurationSettings;
+	int[] lobbyConfigurationTeams;
+	string[] lobbyConfiguration;
+	void updateLobbyConfiguration(){
+		auto data=lobbyView.data;
+		if(lobbyConfiguration.length&&lobbyConfigurationSettings==data.settings&&lobbyConfigurationTeams==data.teams) return;
+		lobbyConfigurationSettings=data.settings;
+		lobbyConfigurationTeams=data.teams.dup;
+		lobbyConfiguration.length=0;
+		lobbyConfiguration.assumeSafeAppend();
+		static string label(char[4] tag,string fallback){ return formTexts.get(tag,fallback); }
+		with(data.settings){
+			string type;
+			final switch(gameMode){
+				case GameMode.scenario: type=label("p1TG","Scenario"); break;
+				case GameMode.skirmish: type=label("pmTG","Skirmish"); break;
+				case GameMode.slaughter: type=text(label("lsTG","Slaughter"),": ",gameModeParam," ",label("knTG","kills")); break;
+				case GameMode.domination: type=text(label("mdTG","Domination"),": ",gameModeParam," ",label("amTG","manaliths")); break;
+				case GameMode.soulHarvest: type=text(label("hsTG","Soul Harvest"),": ",gameModeParam," ",label("snTG","souls")); break;
+			}
+			if(data.teams.length){ // (team sizes, e.g. 2v2)
+				int[] sizes;
+				foreach(team;data.teams[0..min($,data.gameSlots)]){
+					if(team<0) continue;
+					if(sizes.length<=team) sizes.length=team+1;
+					sizes[team]++;
+				}
+				type~=sizes.all!(size=>size<=1)?" FFA":text(" ",sizes.map!(size=>text(size)).joiner("v"));
+			}
+			lobbyConfiguration~=type;
+			if(level!=-1&&level!=minLevel) lobbyConfiguration~=text("Level: ",level);
+			if(minLevel!=-1) lobbyConfiguration~=text(label("nilm","Min. level"),": ",minLevel);
+			if(maxLevel!=-1) lobbyConfiguration~=text(label("xaml","Max. level"),": ",maxLevel);
+			if(souls!=-1) lobbyConfiguration~=text(label("rpsn","Starting souls"),": ",souls);
+			if(xpRate>=0.0f) lobbyConfiguration~=text(label("trpx","Experience"),": ",to!int(100.0f*xpRate+0.5f),"%");
+			if(friendlyFire) lobbyConfiguration~=label("riff","Friendly fire");
+			if(collectAlliedSouls) lobbyConfiguration~=label("rpsa","Collect allied souls");
+			if(alwaysGib) lobbyConfiguration~=label("biga","Always gib");
+			if(randomAltars) lobbyConfiguration~=label("clpr","Random altar");
+			if(!mapCreatures) lobbyConfiguration~=label("rcon","No creatures");
+			if(!mapSouls) lobbyConfiguration~=label("sbon","No souls");
+		}
+	}
 	void updateLobbyForm(){
 		auto data=lobbyView.data;
 		info.lobbyMapFilename=lobbyView.mapFilename;
 		info.lobbyChatMessages=lobbyFormOpen?lobbyView.chat:null;
+		info.lobbyConfiguration=null;
 		if(!lobbyVisible||state||!data||!data.slots.length){
 			closeLobbyForm();
 			return;
 		}
+		updateLobbyConfiguration();
+		info.lobbyConfiguration=lobbyConfiguration;
 		auto numSlots=to!int(data.slots.length);
 		info.lobbyNumSlots=min(numSlots,data.gameSlots); // (numbered slots)
 		auto formSlots=SacForm!DagonBackend.lobby(numSlots).height; // (the form only changes for more than five slots)

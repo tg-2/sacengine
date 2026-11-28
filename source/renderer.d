@@ -168,6 +168,7 @@ struct RenderInfo(B){
 	bool gameBlackedOut=false; // the game state is being built, only forms are drawn
 	string lobbyMapFilename=null; // map shown in the lobby (preview picture)
 	const(string)[] lobbyChatMessages; // shown in the lobby ("name: message")
+	const(string)[] lobbyConfiguration; // lines shown below the map picture in the lobby
 	int lobbyNumSlots=0;
 	float loadingProgress=0.0f;
 	string loadingMapFolder=null;
@@ -6103,38 +6104,48 @@ struct Renderer(B){
 			scaling=min(scaling,cast(float)info.height/sacForm.height,cast(float)info.width/sacForm.width);
 		return scaling;
 	}
-	// lobby chat (form ybol, element tahc): the most recent messages, at the bottom
+	// lobby (form ybol): the most recent chat messages (element tahc), and the game configuration
 	void renderLobbyChat(ref SacFormState!B form,ref RenderInfo!B info,B.RenderContext rc){
 		auto sacForm=form.sacForm;
-		if(sacForm.tag!="ybol"||!info.lobbyChatMessages.length) return;
+		if(sacForm.tag!="ybol") return;
+		foreach(ref sacElement;sacForm.sacElements){
+			if(sacElement.id=="tahc") renderLobbyLines(sacForm,sacElement.offset,sacElement.size,info.lobbyChatMessages,true,info,rc);
+			if(sacElement.id!="iPAM"||sacElement.subForms.length!=1) continue;
+			foreach(ref mapElement;sacElement.subForms[0].form.sacElements){ // game configuration (below the map picture)
+				enum titleHeight=8.0f;
+				if(mapElement.id=="PYTG") renderLobbyLines(sacForm,sacElement.subForms[0].offset+mapElement.offset+Vector2f(0.0f,titleHeight),mapElement.size-Vector2f(0.0f,titleHeight),info.lobbyConfiguration,false,info,rc);
+			}
+		}
+	}
+	// lines of text in a textbox of the lobby form (given relative to the form), broken to fit: the first lines, or the last ones (bottom)
+	void renderLobbyLines(SacForm!B sacForm,Vector2f position,Vector2f size,const(string)[] lines,bool bottom,ref RenderInfo!B info,B.RenderContext rc){
+		if(!lines.length) return;
 		auto scaling=defaultFormScaling(sacForm,info);
 		auto offset=Vector2f(0.5f*(info.width-scaling*sacForm.width),0.5f*(info.height-scaling*sacForm.height));
-		foreach(ref sacElement;sacForm.sacElements){
-			if(sacElement.id!="tahc") continue;
-			enum border=8.0f, scrollbarWidth=16.0f;
-			auto left=sacElement.offset.x+border, top=sacElement.offset.y+border;
-			auto width=sacElement.size.x-2.0f*border-scrollbarWidth, height=sacElement.size.y-2.0f*border;
-			auto font=formSacFont!B(FormFont.standard);
-			int maxLines=cast(int)(height/font.lineHeight);
-			auto messages=info.lobbyChatMessages;
-			size_t first=messages.length;
-			int numLines=0;
-			while(first>0&&numLines<maxLines) numLines+=countLines(font,messages[--first],width);
-			int skip=max(0,numLines-maxLines); // (lines of the oldest shown message that do not fit)
-			FormatSettings settings={flowType:FlowType.left,scale:scaling};
-			bindFont(font,rc);
-			setFontColor(font,Color4f(1.0f,1.0f,1.0f,1.0f));
-			auto y=offset.y+scaling*top;
-			foreach(message;messages[first..$]){
-				wrapLines(font,message,width,(const(char)[] line){
-					if(skip>0){ skip--; return; }
-					drawText(font,line,offset.x+scaling*left,y,settings,info,rc);
-					y+=scaling*font.lineHeight;
-				});
-			}
-			unbindFont(font,rc);
-			break;
+		enum border=8.0f, scrollbarWidth=16.0f;
+		auto left=position.x+border, top=position.y+border;
+		auto width=size.x-2.0f*border-scrollbarWidth, height=size.y-2.0f*border;
+		auto font=formSacFont!B(FormFont.standard);
+		int maxLines=cast(int)(height/font.lineHeight);
+		size_t first=bottom?lines.length:0;
+		int numLines=0;
+		if(bottom) while(first>0&&numLines<maxLines) numLines+=countLines(font,lines[--first],width);
+		int skip=max(0,numLines-maxLines); // (lines of the first shown message that do not fit)
+		int shown=0;
+		FormatSettings settings={flowType:FlowType.left,scale:scaling};
+		bindFont(font,rc);
+		setFontColor(font,Color4f(1.0f,1.0f,1.0f,1.0f));
+		auto y=offset.y+scaling*top;
+		foreach(message;lines[first..$]){
+			if(shown>=maxLines) break;
+			wrapLines(font,message,width,(const(char)[] line){
+				if(skip>0){ skip--; return; }
+				if(shown++>=maxLines) return;
+				drawText(font,line,offset.x+scaling*left,y,settings,info,rc);
+				y+=scaling*font.lineHeight;
+			});
 		}
+		unbindFont(font,rc);
 	}
 
 	// lobby: numbers of slots after the fourth (the original only has icons for 1-4), centered on the slot number element

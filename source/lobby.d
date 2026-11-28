@@ -51,11 +51,25 @@ struct LobbyAction{
 	int slot=-1;
 	string text; // chat
 }
+// settings of the game that the lobby shows (chosen by the host)
+struct LobbySettings{
+	GameMode gameMode=GameMode.skirmish;
+	int gameModeParam;
+	int level=-1, minLevel=-1, maxLevel=-1, souls=-1; // (-1: up to each player)
+	float xpRate=-1.0f;
+	bool friendlyFire=true;
+	bool collectAlliedSouls=false;
+	bool alwaysGib=false;
+	bool randomAltars=false;
+	bool mapCreatures=true;
+	bool mapSouls=true;
+}
 struct LobbyData{
 	LobbySlot[] slots;
 	int gameSlots=0; // slots of the game, players who are in a slot after them when the game starts observe it
 	int maxSlots=0; // (slots are added after those of the game up to this number, so that there is an open slot for whoever joins)
 	string map;
+	LobbySettings settings;
 	// chosen by the host for all slots (--gods, --NvN): the players cannot change theirs until the host changes one in the lobby
 	God[] gods; // (God.none: up to the player)
 	int[] teams;
@@ -954,6 +968,20 @@ class Lobby(B){
 		data.gameSlots=to!int(data.slots.length);
 		data.maxSlots=network?max(data.gameSlots,lobbySlotLimit):data.gameSlots; // (nobody joins a local game)
 		data.map=options.map;
+		with(data.settings){
+			gameMode=options.gameMode;
+			gameModeParam=options.gameModeParam;
+			if(!network||options.synchronizeLevel) level=options.level;
+			if(!network||options.synchronizeLevelBounds) minLevel=options.minLevel, maxLevel=options.maxLevel;
+			if(!network||options.synchronizeSouls) souls=options.souls;
+			if(!network||options.synchronizeXpRate) xpRate=options.xpRate;
+			friendlyFire=options.friendlyFire;
+			collectAlliedSouls=options.collectAlliedSouls;
+			alwaysGib=options.alwaysGib;
+			randomAltars=options.shuffleAltars||options.shuffleSides||options.shuffleSlots;
+			mapCreatures=options.mapCreatures;
+			mapSouls=options.mapSouls;
+		}
 		data.gods=options.gods.dup;
 		if(options.gameMode!=GameMode.scenario&&options.teamSizes.length)
 			data.teams=teamSizesToTeams(options.teamSizes).take(data.slots.length).array;
