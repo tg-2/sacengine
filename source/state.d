@@ -14973,12 +14973,14 @@ int updateTarget(bool advance=false,B,T...)(ref MovingObject!B object,Vector3f p
 		if(entry.id==currentTargetId) score*=1.3f;
 		return score;
 	}
-	static bool visibleFilter(ref CenterProximityEntry entry,int side,ObjectState!B state,Vector3f referencePosition,float refRange,float threshold,int lastAttackerId,int currentTargetId){
+	static bool visibleFilter(ref CenterProximityEntry entry,int side,ObjectState!B state,Vector3f islandPosition,Vector3f referencePosition,float refRange,float threshold,int lastAttackerId,int currentTargetId){
 		if(!state.isVisibleToSide(side,entry.id,entry.side)) return false;
+		// 0x494fd0: targets on another island are only considered by creatures that can fly
+		if(!isNaN(islandPosition.x)&&!state.pathFinder.sameIsland(islandPosition,entry.position)) return false;
 		return targetScore(entry,referencePosition,refRange,lastAttackerId,currentTargetId,state)>threshold;
 	}
 	static float scorePriority(T2...)(ref CenterProximityEntry entry,T2 args){
-		return targetScore(entry,args[$-5],args[$-4],args[$-2],args[$-1],args[$-6]);
+		return targetScore(entry,args[$-5],args[$-4],args[$-2],args[$-1],args[$-7]);
 	}
 	auto newPosition=position;
 	newPosition.z=state.getHeight(newPosition)+object.position.z-state.getHeight(object.position);
@@ -15003,15 +15005,17 @@ int updateTarget(bool advance=false,B,T...)(ref MovingObject!B object,Vector3f p
 			auto scoreCutoff=0.25f<sqrtThreshold?refRange*(1.0f-sqrtThreshold)/0.75f:0.25f*refRange/sqrtThreshold;
 			enum maxDist=5120.0f;
 			auto lastAttackerId=object.creatureAI.lastAttackerId, currentTargetId=object.creatureAI.targetId;
+			auto islandPosition=object.sacObject.canFly?Vector3f.init:object.position;
+			state.applyEdgeChanges();
 			static if(advance){
 				auto toDest=position-object.position;
 				auto referencePosition=object.position+min(1.0f,15.0f/toDest.length)*toDest;
 				auto queryRadius=min(maxDist,(referencePosition-object.position).length+scoreCutoff);
-				object.creatureAI.targetId=state.proximity.enemyInRangeAndClosestToPreferringAttackersOf!(visibleFilter,scorePriority)(object.side,object.position,queryRadius,referencePosition,object.id,EnemyType.all,state,maxHeight,object.side,state,referencePosition,refRange,threshold,lastAttackerId,currentTargetId);
+				object.creatureAI.targetId=state.proximity.enemyInRangeAndClosestToPreferringAttackersOf!(visibleFilter,scorePriority)(object.side,object.position,queryRadius,referencePosition,object.id,EnemyType.all,state,maxHeight,object.side,state,islandPosition,referencePosition,refRange,threshold,lastAttackerId,currentTargetId);
 			}
 			else{
 				auto queryRadius=min(maxDist,(position-object.position).length+scoreCutoff);
-				object.creatureAI.targetId=state.proximity.closestEnemyInRange!(visibleFilter,scorePriority)(object.side,object.position,queryRadius,EnemyType.all,state,maxHeight,object.side,state,position,refRange,threshold,lastAttackerId,currentTargetId);
+				object.creatureAI.targetId=state.proximity.closestEnemyInRange!(visibleFilter,scorePriority)(object.side,object.position,queryRadius,EnemyType.all,state,maxHeight,object.side,state,islandPosition,position,refRange,threshold,lastAttackerId,currentTargetId);
 			}
 		}
 	}
