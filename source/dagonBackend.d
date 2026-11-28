@@ -223,6 +223,7 @@ final class SacScene: Scene{
 		super.renderEntities2D(rc);
 		updateMouse();
 		info.fps=eventManager.fps;
+		info.textCursorVisible=textCursorVisible;
 		info.statusLabel=null;
 		foreach(mod;activeMods) if(auto label=mod.statusLabel(this)){ info.statusLabel=label; break; }
 		info.loadingScreenVisible=loadingScreenVisible();
@@ -487,6 +488,22 @@ final class SacScene: Scene{
 	int[512] keyDown,keyUp;
 	int[255] mouseButtonDown,mouseButtonUp;
 
+	// blinking text cursor in the focused entry box, as in the original (Sacrifice.exe 0x4b3880, 0x4b3a30, 0x4b3ff3):
+	// a counter in game ticks (1/60 s) wraps above 40 (modulo 40), the cursor is visible while it is below 20
+	// (19 ticks visible, 21 hidden), every edit or cursor movement resets it to 0 (visible)
+	int textCursorCounter=0;
+	long textCursorRemainder=0; // (hnsecs times 60)
+	void updateTextCursor(Duration dt){
+		textCursorRemainder+=dt.total!"hnsecs"*60;
+		enum tick=10_000_000L;
+		auto ticks=textCursorRemainder/tick;
+		textCursorRemainder-=ticks*tick;
+		textCursorCounter+=cast(int)min(ticks,1000);
+		if(textCursorCounter>40) textCursorCounter%=40;
+	}
+	void resetTextCursor(){ textCursorCounter=0; }
+	@property bool textCursorVisible(){ return textCursorCounter<20; }
+
 	override void onTextInput(dchar d){
 		if(triggerInputCaptured()) return;
 		if(!mouse.menuMode) return;
@@ -500,6 +517,7 @@ final class SacScene: Scene{
 		if(d!=' ') form.focusType(.form.ElementType.entrybox);
 		if(activeElement.type==.form.ElementType.entrybox){
 			activeElement.enterDchar!DagonBackend(d);
+			resetTextCursor();
 		}
 	}
 	override void onKeyDown(int key){ keyDown[key]+=1; }
@@ -1068,6 +1086,7 @@ final class SacScene: Scene{
 			auto mbUp=mouseButtonUp[MB_LEFT]+mouseButtonUp[MB_MIDDLE]+mouseButtonUp[MB_RIGHT];
 			if(mbDown!=0){
 				form.activeIndex=mouse.target.elementIndex;
+				resetTextCursor();
 			}
 			if(mbUp!=0){
 				if(elementIndex==form.activeIndex){
@@ -1094,12 +1113,14 @@ final class SacScene: Scene{
 					import core.stdc.string: strlen;
 					auto view=normalize!NFKC(str[0..strlen(str)]); // TODO: would be better without GC leak
 					form.focusType(.form.ElementType.entrybox);
-					if(activeElement.type==.form.ElementType.entrybox)
+					if(activeElement.type==.form.ElementType.entrybox){
 						foreach(dchar d;view) activeElement.enterDchar!DagonBackend(d);
+						resetTextCursor();
+					}
 				}
 			}
 		}
-		foreach(_;0..keyDown[KEY_TAB]) form.tabActive();
+		foreach(_;0..keyDown[KEY_TAB]){ form.tabActive(); resetTextCursor(); }
 		foreach(_;0..keyDown[KEY_SPACE]){
 			if(activeElement.activate()){
 				playMenuActionSound();
@@ -1115,6 +1136,7 @@ final class SacScene: Scene{
 						playMenuActionSound(); // (as the original: click sound when a message is sent)
 					element.textInput.length=0;
 					element.textStart=element.textEnd=element.textCursor=0;
+					resetTextCursor();
 				}
 			}
 			keyDown[KEY_RETURN]=0;
@@ -1145,6 +1167,7 @@ final class SacScene: Scene{
 					activeElement.moveLeft!DagonBackend();
 				foreach(_;0..keyDown[KEY_RIGHT])
 					activeElement.moveRight!DagonBackend();
+				resetTextCursor();
 			}
 		}
 		if(form.sacForm.isChatForm){
@@ -2758,6 +2781,7 @@ final class SacScene: Scene{
 		if(audio&&state) audio.update(dt,fpview.viewMatrix,state.current,renderSide);
 		else if(audio&&(lobbyVisible||audio.currentTheme==Theme.menu)) audio.updateTheme(dt); // (lobby music, until it has faded out)
 		updateCursor(dt);
+		updateTextCursor(dt);
 		updateTriggerProjection();
 		foreach(mod;activeMods) mod.update(this,dt);
 		super.onUpdate(dt);
