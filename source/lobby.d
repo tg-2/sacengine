@@ -44,6 +44,7 @@ enum LobbyActionType{
 	takeSlot, // move to an open slot, or swap slots with a computer player (host: also with another player)
 	toggleComputer, // add or remove a computer player
 	chat,
+	emote, // chat command /me: "* name text"
 	start,
 }
 struct LobbyAction{
@@ -137,7 +138,7 @@ struct LobbyData{
 				if(action.type==toggleComputer) return host&&type!=LobbySlotType.human&&action.slot<gameSlots;
 				if(type==LobbySlotType.computer&&own>=gameSlots) return false; // (computer players do not observe)
 				return own!=-1&&action.slot!=own&&(host||type!=LobbySlotType.human);
-			case chat: return action.text.length&&action.text.length<=chatMessageLimit;
+			case chat,emote: return action.text.length&&action.text.length<=chatMessageLimit;
 			case start: return host;
 		}
 	}
@@ -1046,6 +1047,18 @@ class Lobby(B){
 		auto name=network?network.players[player].settings.name:options.name;
 		return name.length?name:"Anonymous";
 	}
+	// chat messages of this player that start with '/' are commands: "/me text" becomes an emote,
+	// other commands are not sent (returns false), the player gets a line that only they see
+	bool chatCommand(ref LobbyAction action){
+		if(action.type!=LobbyActionType.chat||!action.text.startsWith("/")) return true;
+		auto command=action.text.findSplit(" ");
+		if(command[0]=="/me"){
+			action=LobbyAction(LobbyActionType.emote,-1,command[2].strip);
+			return true;
+		}
+		chat~=text("Unknown command ",command[0]," (commands: /me)");
+		return false;
+	}
 	void say(string line)in{
 		assert(isHost);
 	}do{
@@ -1063,6 +1076,11 @@ class Lobby(B){
 				import std.utf: validate;
 				validate(action.text);
 				say(text(playerName(player,options),": ",action.text));
+				break;
+			case LobbyActionType.emote:
+				import std.utf: validate;
+				validate(action.text);
+				say(text("* ",playerName(player,options)," ",action.text));
 				break;
 			case LobbyActionType.start: startRequested=true; break;
 			default: data.apply(player,host,action); break;
@@ -1098,6 +1116,7 @@ class Lobby(B){
 		if(!lobbyInitialized) initializeLobby(options);
 		updatePlayers(options);
 		foreach(ref action;B.lobbyActions.data){
+			if(!chatCommand(action)) continue;
 			try perform(me,action,options);
 			catch(Exception e){}
 		}
@@ -1143,7 +1162,7 @@ class Lobby(B){
 		}
 		network.lobbyMessages.length=0;
 		foreach(ref action;B.lobbyActions.data)
-			if(data.allowed(me,false,action)) action.serialized(&network.sendLobbyAction);
+			if(chatCommand(action)&&data.allowed(me,false,action)) action.serialized(&network.sendLobbyAction);
 		B.lobbyActions.length=0;
 		if(data.slots.length) B.showLobby(LobbyView(&data,me,false,false,chat.data,options.map));
 	}
