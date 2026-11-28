@@ -1293,20 +1293,26 @@ final class SacMap(B){
 			newPosition.z=getGroundHeight(newPosition,displacement);
 			return newPosition;
 		}
-		static immutable Vector2f[8] directions=cartesianProduct([-1,0,1],[-1,0,1]).filter!(x=>x[0]||x[1]).map!(x=>Vector2f(x[0],x[1],0.0f).normalized).array;
+		// Same as the original engine (LAND::FindEdgeSlidePos):
+		// bisect the step to get as close to the edge as possible,
+		// then slide perpendicular to the movement direction by the remaining
+		// part of the step, if exactly one of the two sides is on the ground.
+		float lo=0.0f,hi=1.0f;
 		Vector3f bestNewPosition=position;
-		float largestDotProduct=0.0f;
-		foreach(i;0..8){
-			auto dotProduct=dot(directions[i],direction.xy);
-			if(dotProduct>largestDotProduct){
-				auto newPosition2D=position.xy+dotProduct*directions[i];
-				newPosition=Vector3f(newPosition2D.x,newPosition2D.y,0.0f);
-				if(isOnGround(newPosition)){
-					bestNewPosition=newPosition;
-					largestDotProduct=0.0f;
-				}
-			}
+		foreach(i;0..4){
+			auto t=0.5f*(lo+hi);
+			auto candidate=position+t*direction;
+			if(isOnGround(candidate)){
+				lo=t;
+				bestNewPosition=candidate;
+			}else hi=t;
 		}
+		auto slide=(1.0f-lo)*Vector3f(direction.y,-direction.x,0.0f);
+		auto slidePosition1=bestNewPosition+slide;
+		auto slidePosition2=bestNewPosition-slide;
+		bool onGround1=isOnGround(slidePosition1);
+		bool onGround2=isOnGround(slidePosition2);
+		if(onGround1!=onGround2) bestNewPosition=onGround1?slidePosition1:slidePosition2;
 		bestNewPosition.z=getGroundHeight(bestNewPosition,displacement);
 		return bestNewPosition;
 	}
