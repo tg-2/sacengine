@@ -163,6 +163,7 @@ struct RenderInfo(B){
 	bool fpsVisible=false; // toggled with F8
 	string statusLabel; // short text from a mod (mods.d), shown under the FPS box
 	int fps=0;
+	bool textCursorVisible=true; // blinking text cursor in the focused entry box (blink phase)
 	float startCountdownProgress=float.nan; // loading bar before the synchronized game start (NaN: hidden)
 	bool loadingScreenVisible=false;
 	bool gameBlackedOut=false; // the game state is being built, only forms are drawn
@@ -5991,6 +5992,22 @@ struct Renderer(B){
 		void renderFormElements(SacForm!B sacForm,scope ElementState[] elements,int s,int e,int activeElement,int targetElement,Vector3f offset,Quaternionf rotation,Vector3f scale){
 			enforce(elements[s].type==ElementType.form&&elements[s].numChildren+1==e-s);
 			B.colorHUDMaterialBackend.setTransformationScaled(offset,rotation,scale,rc);
+			void renderTextCursor(ref SacFormElement!B sacElement,ref ElementState element,Vector3f offset,Vector3f scale){
+				// as in the original: a vertical line of the height of the font, where the next character would be drawn
+				// (left of the text + width of the text before the cursor, including the gap after each character),
+				// starting 1 above the text (vertically centered in the 16 units high entry box)
+				auto font=fonts[FormFont.standard];
+				auto start=element.textStart, cursor=element.textCursor;
+				if(cursor<start||cursor>element.textInput.length) return;
+				auto textWidth=font.getTextWidth(element.textInput.data[start..cursor]);
+				auto cursorTop=(16-font.lineHeight)/2, cursorHeight=font.lineHeight; // (fnwt: 2 and 11, the text starts at 3)
+				auto x=offset.x+(sacElement.offset.x+20+textWidth)*scale.x;
+				auto y=offset.y+(sacElement.offset.y+cursorTop)*scale.y;
+				auto width=max(1.0f,floor(scale.x+0.5f)), height=cursorHeight*scale.y;
+				B.colorHUDMaterialBackend.bindDiffuse(whiteTexture);
+				B.colorHUDMaterialBackend.setTransformationScaled(Vector3f(floor(x+0.5f),y,0.0f),Quaternionf.identity(),Vector3f(width,height,0.0f),rc);
+				quad.render(rc);
+			}
 			void renderElement(ref SacFormElement!B sacElement,ushort elementIndex,bool active,bool target){
 				if(!elements[elementIndex].visible) return;
 				if(!elements[elementIndex].enabled) B.colorHUDMaterialBackend.setAlpha(0.5f);
@@ -6064,6 +6081,8 @@ struct Renderer(B){
 				}
 				B.colorHUDMaterialBackend.bind(null,rc);
 				B.colorHUDMaterialBackend.setColor(Color4f(1.0f,1.0f,1.0f,1.0f));
+				if(sacElement.type==ElementType.entrybox&&active&&interactive&&info.textCursorVisible&&elements[elementIndex].enabled)
+					renderTextCursor(sacElement,elements[elementIndex],offset,scale);
 				B.colorHUDMaterialBackend.setTransformationScaled(offset,rotation,scale,rc); // (bind resets the transformation, e.g. for forms without a title)
 			}
 			renderElement(sacForm.sacElements[0],to!ushort(s),true,targetElement!=-1); // render form itself
