@@ -121,6 +121,27 @@ final class Controller(B){
 		hasStarted=true;
 		waitingOnNetwork=true;
 		B.clearSidechannelMessages(); // TODO: does not work properly yet
+		if(!network&&!playback) saveStartState();
+	}
+
+	// "Restart" in the defeat form of the original (lose, games without network): the game starts again from the state it started with
+	ubyte[] startState; // serialized state and commands
+	void saveStartState(){
+		import serialize_;
+		state.committed.serialized((scope ubyte[] stateData){
+			state.commands.serialized((scope ubyte[] commandData){
+				startState=stateData~commandData;
+			});
+		});
+	}
+	bool canRestart(){ return !network&&!playback&&startState.length; }
+	void restart()in{
+		assert(canRestart());
+	}do{
+		state.resetTo(startState[]);
+		if(recording) recording.replaceState(state.committed,state.commands);
+		timer.setFrame(state.committedFrame);
+		chatMessageLowerBound=state.committedFrame;
 	}
 
 	bool isControllingSide(int side){

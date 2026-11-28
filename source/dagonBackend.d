@@ -14,6 +14,7 @@ import lobby;
 import sacobject, sacspell, mrmm, nttData, sacmap, levl, state, form, sacform, controller, network;
 import sxsk : gpuSkinning;
 import renderer,audioBackend;
+import audio: setListenerGain;
 import frameprof;
 import loading: loadingStatus, loadingScreenSample;
 import bots.shiny: SideType;
@@ -227,6 +228,7 @@ final class SacScene: Scene{
 		foreach(mod;activeMods) if(auto label=mod.statusLabel(this)){ info.statusLabel=label; break; }
 		info.loadingScreenVisible=loadingScreenVisible();
 		info.gameBlackedOut=loadingStatus.initializingGame||!state&&(lobbyNetwork||lobbyVisible); // (also while waiting for the game start)
+		info.screenFade=screenFade;
 		info.loadingProgress=loadingStatus.progress;
 		info.loadingMapFolder=loadingStatus.mapFolder;
 		updateLobbyForm();
@@ -1039,6 +1041,10 @@ final class SacScene: Scene{
 			case "tuqh": // host has quit
 				if(elementIndex<forms[formIndex].elements.length&&forms[formIndex].elements[elementIndex].id=="tuqh")
 					DagonBackend.app.exit();
+				break;
+			case "cniw","rniw","esol","nsol": // victory/defeat
+				if(elementIndex<forms[formIndex].elements.length)
+					endFormElementClicked(forms[formIndex].elements[elementIndex].id);
 				break;
 			case "sohc": // trigger choice dialog
 				if(elementIndex<forms[formIndex].elements.length){
@@ -2655,6 +2661,95 @@ final class SacScene: Scene{
 	}
 
 	bool gameEnded=false;
+
+	// Victory/defeat form of the original (Sacrifice.exe). When the result of a player is set (0x4717d0: victory, or defeat,
+	// surrender, drop), the form of the game mode is opened in the same frame for the local player (0x451d10): network games
+	// losn/winr, other games lose/winc (vtable +0xc/+0x10 of the game mode). Without network the game is paused while it is
+	// open (0x451c70). Its handler is 0x450f70: the picture plays the defeat/victory theme when the form is opened; OK and
+	// Restart fade the screen and the volume out (1/60 per 1/60 s), then leave the game (the original returns to its menu,
+	// sacengine has none) or restart it; Observe closes the form and tells everybody that the player is now an observer.
+	bool endFormOpen=false;
+	char[4] endFormAction=0; // "__ko" or "ttsr" once it was clicked (only the first click counts, 0x4dcda0)
+	float screenFade=0.0f; // black over the screen (0x4d5db8)
+	static bool isEndForm(char[4] tag){ return !!tag.among("cniw","rniw","esol","nsol"); }
+	bool showEndForm(){
+		return controller&&controller.controlledSide!=-1&&!controller.playback&&!options.observer;
+	}
+	void openEndForm(bool victory){
+		bool network=controller&&controller.network;
+		char[4] tag=network?(victory?"rniw":"nsol"):(victory?"cniw":"esol");
+		closeTriggerAskForm();
+		triggerAskFormOpen=false;
+		forms.length=0;
+		formsReplaced();
+		auto form=sacFormInstance!DagonBackend(tag);
+		foreach(ref element;form.elements.data){
+			switch(element.id){
+				case "magl": element.enabled=false; break; // load game: sacengine has no saved games
+				case "mmus": element.enabled=false; break; // summary: TODO (form summ, Sacrifice.exe 0x470f80)
+				case "ttsr": element.enabled=controller.canRestart(); break;
+				default: break;
+			}
+		}
+		forms~=.move(form);
+		endFormOpen=true;
+		endFormAction=0;
+		enableMenu();
+		if(!network) pause();
+	}
+	void closeEndForm(){
+		if(!endFormOpen) return;
+		endFormOpen=false;
+		if(forms.length&&isEndForm(forms[$-1].sacForm.tag)){
+			forms.length=forms.length-1;
+			formsReplaced();
+		}
+		if(!forms.length) disableMenu();
+	}
+	void endFormElementClicked(char[4] id){
+		if(endFormAction!="\0\0\0\0") return;
+		switch(id){
+			case "__ko","ttsr": endFormAction=id; break;
+			case "vsbo": observeAfterDefeat(); break;
+			default: break;
+		}
+	}
+	// Observe (losn): the player keeps watching the game, everybody is told (plob, "<name> is now an observer.")
+	void observeAfterDefeat(){
+		closeEndForm();
+		if(!controller||!controller.network) return;
+		auto network=controller.network;
+		auto name=network.players[network.me].settings.name;
+		if(!name.length) name="Anonymous";
+		auto text=formTextFromTag("bolp");
+		if(!text.length) text="is now an observer.";
+		auto controlledSlot=controller.controlledSlot;
+		auto chatMessage=makeChatMessage!DagonBackend(controlledSlot,-1,ChatMessageType.system,name,text,state.current.frame);
+		controller.addCommand(Command!DagonBackend(-1,move(chatMessage)));
+	}
+	void updateEndForm(Duration dt){
+		if(endFormAction=="\0\0\0\0") return;
+		screenFade=min(1.0f,screenFade+dt.total!"hnsecs"*1e-7f); // (Sacrifice.exe 0x407d00: step 1/60 per 1/60 s)
+		setListenerGain(1.0f-screenFade); // (the volume is (1-fade)·volume)
+		if(screenFade<1.0f) return;
+		auto action=endFormAction;
+		endFormAction=0;
+		if(action=="ttsr") restartGame();
+		else DagonBackend.app.exit(); // (the original returns to its menu)
+	}
+	void restartGame(){
+		closeEndForm();
+		controller.restart();
+		gameEnded=false;
+		screenFade=0.0f;
+		setListenerGain(1.0f);
+		if(audio) audio.restartTheme(Theme.normal);
+		auto slot=controller.controlledSlot;
+		auto wizard=0<=slot&&slot<state.slots.length?state.slots[slot].wizard:0;
+		if(wizard) focusCamera(wizard);
+		unpause();
+	}
+
 	override void onUpdate(Duration dt){
 		auto fpSw=frameprof.timer();
 		scope(exit) frameprof.reportRenderedFrame(dt,fpSw.peek);
@@ -2676,11 +2771,14 @@ final class SacScene: Scene{
 					if(state.current.isVictorious(controller.controlledSide)){
 						if(audio) audio.playThemeOnce(Theme.victory);
 						gameEnded=true;
+						if(showEndForm()) openEndForm(true);
 					}else if(state.current.isDefeated(controller.controlledSide)){
 						if(audio) audio.playThemeOnce(Theme.defeat);
 						gameEnded=true;
+						if(showEndForm()) openEndForm(false);
 					}
 				}
+				updateEndForm(dt);
 				if(audio){
 					if(renderSide==-1){
 						audio.switchTheme(Theme.normal);

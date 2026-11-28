@@ -46,6 +46,11 @@ void unloadAudio(){
 	device=null;
 	context=null;
 }
+// gain of everything that is heard (end of the game: the volume fades out together with the screen, Sacrifice.exe 0x407d00)
+void setListenerGain(float gain){
+	if(!device) return;
+	alListenerf(AL_GAIN,gain);
+}
 private{
 	@property void listenerPosition(Vector3f position){
 		alListenerfv(AL_POSITION,position.arrayof.ptr);

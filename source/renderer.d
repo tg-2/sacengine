@@ -166,6 +166,7 @@ struct RenderInfo(B){
 	float startCountdownProgress=float.nan; // loading bar before the synchronized game start (NaN: hidden)
 	bool loadingScreenVisible=false;
 	bool gameBlackedOut=false; // the game state is being built, only forms are drawn
+	float screenFade=0.0f; // black over everything but the cursor, in [0,1] (end of the game, see SacScene.updateEndForm)
 	string lobbyMapFilename=null; // map shown in the lobby (preview picture)
 	const(string)[] lobbyChatMessages; // shown in the lobby ("name: message")
 	int lobbyNumSlots=0;
@@ -6458,6 +6459,12 @@ struct Renderer(B){
 		}
 		triggerPanel(Vector2f(0.0f,0.0f),Vector2f(info.width,info.height),color,rc);
 	}
+	// as the original (Sacrifice.exe 0x407e20): drawn after the forms, so they fade out as well
+	void renderScreenFade(ref RenderInfo!B info,B.RenderContext rc){
+		auto amount=min(info.screenFade,1.0f);
+		if(!(amount>0.0f)) return;
+		triggerPanel(Vector2f(0.0f,0.0f),Vector2f(info.width,info.height),Color4f(0.0f,0.0f,0.0f,amount),rc);
+	}
 	void renderTriggerPresentation(R2DOpt options,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
 		renderTriggerCinematics(state,info,rc);
 		if(!state.trig.cinematics) renderTriggerStatus(options,state,info,rc);
@@ -6483,6 +6490,7 @@ struct Renderer(B){
 			renderForms(forms,info,rc);
 			renderRectangleSelectFrame(info,rc);
 			if(state) renderTriggerPresentation(options,state,info,rc);
+			renderScreenFade(info,rc);
 			renderCursor(options.cursorSize,state,info,rc);
 			renderMouseoverBox(options.cursorSize,state,forms,info,rc);
 		}else{
@@ -6498,6 +6506,7 @@ struct Renderer(B){
 			renderStatusLabel(info,rc);
 			renderStartCountdown(info,rc);
 			if(state) renderTriggerPresentation(options,state,info,rc);
+			renderScreenFade(info,rc);
 		}
 	}
 }

@@ -34718,6 +34718,15 @@ private struct StateHistory(B){
 		auto newFrame=history[newIndex].state.frame;
 		replaceStateImpl(newIndex,newFrame);
 	}
+	// the committed state becomes the serialized one (any frame, e.g. the start of the game), nothing after it is kept
+	void resetTo(ref Commands!B commands,scope ubyte[] serialized){
+		auto replacement=makeState(); // (deserialization writes into existing strings, which may be immutable)
+		.replaceState(replacement,commands,serialized);
+		history[0].state.copyFrom(replacement);
+		foreach(i;1..history.length) history[i].numPending=-1;
+		history[0].numPending=0;
+		currentFrame=committedFrame;
+	}
 
 	pragma(inline,true) ObjectState!B committed(){ return history[0].state; }
 	pragma(inline,true) ObjectState!B current(){ return history[currentFrame-committedFrame].state; };
@@ -34922,6 +34931,10 @@ final class GameState(B){
 	void rollback(){ .rollback(states,commands); }
 	void removeFuture(){ .removeFuture(states,commands); }
 	void replaceState(scope ubyte[] serialized){ .replaceState(states,commands,serialized); }
+	void resetTo(scope ubyte[] serialized){ // (serialized state followed by the commands)
+		states.resetTo(commands,serialized);
+		static if(B.hasAudio) B.updateAudioAfterRollback();
+	}
 	void replaceState(ObjectState!B replacement){ .replaceState(states,replacement); }
 
 	int canonicalSlotOrder(int index){
