@@ -1207,24 +1207,74 @@ final class SacMap(B){
 		}
 		return tuple!("tri","nt")(tri,nt);
 	}
+	// The triangles are halves of grid cells: three of the corners 0=(i,j), 1=(i+1,j), 2=(i+1,j+1), 3=(i,j+1)
+	// (see di, dj). A triangle is identified by its cell and its missing corner.
+	static struct CellTriangle{
+		int i,j; // cell
+		int missing=-1; // missing corner, -1: no triangle
+	}
+	static CellTriangle cellTriangle(Tuple!(int,"j",int,"i")[3] tri)@nogc{
+		CellTriangle r;
+		if(tri[0]==tri[1]) return r;
+		r.i=min(tri[0].i,tri[1].i,tri[2].i);
+		r.j=min(tri[0].j,tri[1].j,tri[2].j);
+		int present=0;
+		foreach(ref v;tri){
+			auto a=v.i-r.i, b=v.j-r.j; // corner (a,b): 0=(0,0), 1=(1,0), 2=(1,1), 3=(0,1)
+			present|=1<<(b?(a?2:3):(a?1:0));
+		}
+		switch(present^0b1111){
+			case 1<<0: r.missing=0; break;
+			case 1<<1: r.missing=1; break;
+			case 1<<2: r.missing=2; break;
+			case 1<<3: r.missing=3; break;
+			default: assert(0,"not a half of a grid cell");
+		}
+		return r;
+	}
+	// whether the point with cell coordinates (fx,fy) is in the triangle (boundary included)
+	static bool cellInside(int missing,float fx,float fy)@nogc{
+		switch(missing){
+			case 3: return fy>=0.0f&&fx<=1.0f&&fy<=fx; // [0,1,2]
+			case 1: return fy<=1.0f&&fx>=0.0f&&fy>=fx; // [2,3,0]
+			case 0: return fx<=1.0f&&fy<=1.0f&&fx+fy>=1.0f; // [1,2,3]
+			case 2: return fy>=0.0f&&fx>=0.0f&&fx+fy<=1.0f; // [0,1,3]
+			default: return false;
+		}
+	}
+	// the plane of a triangle as z = h + gx·fx + gy·fy, with fx, fy the cell coordinates (in tiles)
+	static struct CellPlane{
+		float h=float.nan,gx=float.nan,gy=float.nan;
+		float opCall(float fx,float fy)@nogc{ return h+gx*fx+gy*fy; }
+	}
+	CellPlane getCellPlane(T)(CellTriangle t,T displacement){
+		CellPlane r;
+		float corner(int k){ return getVertex(t.j+dj(k),t.i+di(k),displacement).z; }
+		switch(t.missing){
+			case 3:{ auto h0=corner(0),h1=corner(1),h2=corner(2); r.h=h0; r.gx=h1-h0; r.gy=h2-h1; break; }
+			case 1:{ auto h0=corner(0),h2=corner(2),h3=corner(3); r.h=h0; r.gx=h2-h3; r.gy=h3-h0; break; }
+			case 0:{ auto h1=corner(1),h2=corner(2),h3=corner(3); r.gx=h2-h3; r.gy=h2-h1; r.h=h2-r.gx-r.gy; break; }
+			case 2:{ auto h0=corner(0),h1=corner(1),h3=corner(3); r.h=h0; r.gx=h1-h0; r.gy=h3-h0; break; }
+			default: break; // no triangle: NaN
+		}
+		return r;
+	}
+	static Vector2f cellCoordinates(CellTriangle t,Vector3f pos)@nogc{
+		return Vector2f((pos.x-10.0f*t.i)*0.1f,(pos.y-10.0f*t.j)*0.1f);
+	}
+	// plane through the (displaced) corners of a triangle, height(x,y)=-(a·x+b·y+d)/c (not normalized)
 	Plane getPlane(T)(Tuple!(int,"j",int,"i")[3] tri,T displacement){
-		static foreach(i;0..3)
-			mixin(text(`auto p`,i,`=getVertex(tri[`,i,`].expand,displacement);`));
+		auto t=cellTriangle(tri);
+		auto p=getCellPlane(t,displacement);
 		Plane plane;
-		plane.fromPoints(p0,p1,p2); // wtf.
+		plane.a=0.1f*p.gx; plane.b=0.1f*p.gy; plane.c=-1.0f;
+		plane.d=p.h-plane.a*(10.0f*t.i)-plane.b*(10.0f*t.j);
 		return plane;
 	}
 	bool isInside(Tuple!(int,"j",int,"i")[3] tri,Vector3f pos)@nogc{
-		Vector3f getV(int k){
-			auto v=getVertex(tri[k%$].j,tri[k%$].i,ZeroDisplacement())-pos;
-			v.z=0;
-			return v;
-		}
-		foreach(k;0..3){
-			if(!(cross(getV(k),getV(k+1)).z>=0))
-				return false;
-		}
-		return true;
+		auto t=cellTriangle(tri);
+		auto f=cellCoordinates(t,pos);
+		return cellInside(t.missing,f.x,f.y);
 	}
 	Tuple!(int,"j",int,"i")[3] getTriangle(bool invert=false)(Vector3f pos)@nogc{
 		return getTriangleWith!invert(pos,MapEdges(edges));
@@ -1234,12 +1284,14 @@ final class SacMap(B){
 		int i=tile.i,j=tile.j;
 		auto triNt=getTrianglesWith!invert(j,i,edge),tri=triNt[0],nt=triNt[1];
 		if(nt==0) return typeof(return).init;
+		// cell coordinates of pos (all triangles of the tile are halves of the same cell)
+		auto fx=(pos.x-10.0f*i)*0.1f, fy=(pos.y-10.0f*j)*0.1f;
 		if(!invert){
-			if(isInside(tri[0],pos)) return tri[0]; // TODO: fix precision issues, by using fixed-point and splitting at line
+			if(cellInside(cellTriangle(tri[0]).missing,fx,fy)) return tri[0];
 			else if(nt==2) return tri[1];
 			else return typeof(return).init;
 		}else{
-			if(nt==1||!isInside(tri[1],pos)) return tri[0];
+			if(nt==1||!cellInside(cellTriangle(tri[1]).missing,fx,fy)) return tri[0];
 			else return tri[1];
 		}
 	}
@@ -1249,8 +1301,9 @@ final class SacMap(B){
 		return triangle[0]!=triangle[1];
 	}
 	private float getHeightImpl(T)(Tuple!(int,"j",int,"i")[3] triangle,Vector3f pos,T displacement){
-		auto plane=getPlane(triangle,displacement);
-		return -(plane.a*pos.x+plane.b*pos.y+plane.d)/plane.c;
+		auto t=cellTriangle(triangle); // no triangle: NaN
+		auto f=cellCoordinates(t,pos);
+		return getCellPlane(t,displacement)(f.x,f.y);
 	}
 	float getHeight(T)(Vector3f pos,T displacement){
 		auto triangle=getTriangle(pos);
@@ -1278,12 +1331,9 @@ final class SacMap(B){
 		return getHeightImpl(triangle,pos,displacement);
 	}
 	float getGroundHeightDerivative(T)(Vector3f pos,Vector3f direction,T displacement){
-		auto triangle=getTriangle(pos);
-		static foreach(i;0..3)
-			mixin(text(`auto p`,i,`=getVertex(triangle[`,i,`].expand,displacement);`));
-		Plane plane;
-		plane.fromPoints(p0,p1,p2); // wtf.
-		return -(plane.a*direction.x+plane.b*direction.y)/plane.c;
+		auto t=cellTriangle(getTriangle(pos)); // no triangle: NaN
+		auto p=getCellPlane(t,displacement);
+		return 0.1f*(p.gx*direction.x+p.gy*direction.y);
 	}
 	Vector3f moveOnGround(T)(Vector3f position,Vector3f direction,T displacement)in{
 		assert(isOnGround(position));
