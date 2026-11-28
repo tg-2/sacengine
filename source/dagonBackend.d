@@ -841,9 +841,22 @@ final class SacScene: Scene{
 	}
 	bool lobbyElementClicked(int elementIndex){
 		auto slot=lobbySlotOfElement(elementIndex);
+		if(slot!=-1&&forms[0].elements[elementIndex].id=="eman") return lobbyPasteName(slot);
 		LobbyAction action;
 		if(slot==-1||!lobbySlotAction(forms[0].elements[elementIndex].id,slot,action)) return false;
 		return lobbyAction(action);
+	}
+	// clicking the name of a player puts it into the chat entry (at the cursor)
+	bool lobbyPasteName(int slot){
+		auto data=lobbyView.data;
+		if(!data||slot>=data.slots.length||!data.slots[slot].name.length) return false;
+		foreach(i,ref entry;forms[0].elements.data){
+			if(entry.type!=.form.ElementType.entrybox||entry.id!="txtc") continue;
+			foreach(dchar d;data.slots[slot].name) entry.enterDchar!DagonBackend(d);
+			forms[0].activeIndex=to!int(i);
+			return true;
+		}
+		return false;
 	}
 	void updateLobbyForm(){
 		auto data=lobbyView.data;
