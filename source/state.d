@@ -14171,82 +14171,8 @@ void unqueueOrder(B)(ref MovingObject!B object,ObjectState!B state){
 }
 
 
-bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPosition,out bool evading,ObjectState!B state,float threshold=defaultFaceThreshold,bool aggressive=false,int targetId=0,bool nearPathEnd=false,bool* blockedAtDestination=null){
-	auto hitbox=object.hitbox;
-	auto rotation=facingQuaternion(object.creatureState.facing);
-	auto distance=0.05f*((hitbox[1].x-hitbox[0].x)+(hitbox[1].y-hitbox[0].y)); // TODO: improve
-	auto frontHitbox=moveBox(hitbox,rotate(rotation,distance*Vector3f(0.0f,1.0f,0.0f)));
-	auto frontObstacleFrontObstacleHitbox=collisionTargetWithHitbox(object.id,hitbox,frontHitbox,state);
-	auto frontObstacle=frontObstacleFrontObstacleHitbox[0];
-	--object.creatureAI.evasionTimer;
-	bool doNotEvade(int obstacle){
-		if(obstacle==targetId) return true;
-		if(!aggressive) return false;
-		return state.objectById!isValidEnemyAttackTarget(obstacle,object.side,state);
-	}
-	if(frontObstacle&&!doNotEvade(frontObstacle)){
-		auto frontObstacleHitbox=frontObstacleFrontObstacleHitbox[1];
-		auto destinationCovered=isInside(targetPosition,frontObstacleHitbox);
-		if(!destinationCovered&&(object.position.xy-targetPosition.xy).lengthsqr<225.0f){
-			static bool isCreature(int id,ObjectState!B state){
-				return state.movingObjectReadById!((ref objects,i)=>true,()=>false)(id);
-			}
-			static void bumpCheck(ProximityEntry entry,int ownId,int excludeId,bool* covered,ObjectState!B state){
-				if(*covered||entry.id==ownId||entry.id==excludeId) return;
-				if(isCreature(entry.id,state)) *covered=true;
-			}
-			if(isCreature(frontObstacle,state)){
-				bool covered=false;
-				Vector3f[2] targetBox=[targetPosition+Vector3f(0.0f,0.0f,-2.0f),targetPosition+Vector3f(0.0f,0.0f,1.0f)];
-				state.proximity.collide!bumpCheck(targetBox,object.id,targetId,&covered,state);
-				destinationCovered=covered;
-			}
-		}
-		if(nearPathEnd&&destinationCovered){
-			if(blockedAtDestination) *blockedAtDestination=true;
-			object.turnToFaceTowards(targetPosition,state,threshold);
-			object.stopMovement(state);
-			evading=true;
-			return true;
-		}
-		Vector2f[2] frontObstacleHitbox2d=[frontObstacleHitbox[0].xy,frontObstacleHitbox[1].xy];
-		auto frontObstacleDirection=-closestBoxFaceNormal(frontObstacleHitbox2d,object.position.xy);
-		auto facing=object.creatureState.facing;
-		auto evasion=object.creatureAI.evasion;
-		if(object.creatureAI.evasionTimer<=0){
-			evasion=RotationDirection.none;
-			if(state.isValidTarget(frontObstacle,TargetType.creature)){
-				static RotationDirection adaptiveEvasion(RenderMode mode)(ref MovingObjects!(B,mode) objects,int index,ObjectState!B state){
-					return objects.creatureAIs[index].evasion!=RotationDirection.none?state.uniform(2)?RotationDirection.right:RotationDirection.left:RotationDirection.none; // TODO: ok?
-				}
-				evasion=object.creatureAI.evasion=state.movingObjectReadById!(adaptiveEvasion,()=>RotationDirection.none)(frontObstacle,state);
-			}
-			if(evasion==RotationDirection.none)
-				evasion=object.creatureAI.evasion=dot(Vector2f(cos(facing),sin(facing)),frontObstacleDirection)<=0.0f?RotationDirection.right:RotationDirection.left;
-			object.creatureAI.evasionTimer=updateFPS;
-		}
-		object.setTurning(evasion,state);
-		object.startMovingForward(state);
-		evading=true;
-		return true;
-	}
-	auto result=object.turnToFaceTowards(targetPosition,state,threshold);
-	auto rotationDirection=object.creatureState.rotationDirection;
-	if(rotationDirection!=RotationDirection.none){
-		enum sideHitboxFactor=1.1f;
-		auto sideOffsetX=rotationDirection==RotationDirection.right?1.0f:-1.0f;
-		auto sideHitbox=moveBox(scaleBox(hitbox,sideHitboxFactor),rotate(rotation,distance*Vector3f(sideOffsetX,0.0f,0.0f)));
-		auto sideObstacle=collisionTarget(object.id,hitbox,sideHitbox,state);
-		if(sideObstacle&&!doNotEvade(sideObstacle)){
-			object.stopTurning(state);
-			object.startMovingForward(state);
-			evading=true;
-			return true;
-		}
-	}
-	return result;
-}
-/+bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPosition,out bool evading,ObjectState!B state,float threshold=defaultFaceThreshold,bool aggressive=false,int targetId=0,bool nearPathEnd=false,bool* blockedAtDestination=null){ // TODO: revisit
+// obstacle evasion, port of Sacrifice.exe 0x45be60 (probes 0x45bd20: 15 units ahead, 30 when flying)
+bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPosition,out bool evading,ObjectState!B state,float threshold=defaultFaceThreshold,bool aggressive=false,int targetId=0,bool* blockedAtDestination=null){
 	auto facing=object.creatureState.facing;
 	auto isFlying=object.creatureState.movement==CreatureMovement.flying;
 	auto lookahead=isFlying?30.0f:15.0f;
@@ -14286,7 +14212,6 @@ bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPositi
 			offset*=cos(elevation);
 			offset.z=lookahead*sin(elevation);
 		}
-		if(!isFlying&&!state.pathFinder.unblocked(object.position+offset,state)) return -1;
 		auto queryBox=hitbox;
 		foreach(k;0..3){
 			if(offset[k]<0.0f) queryBox[0][k]+=offset[k];
@@ -14295,9 +14220,17 @@ bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPositi
 		int blocker=0;
 		auto minFraction=1.0f;
 		state.proximity.collide!handleSweep(queryBox,object.position,offset,expansion,&blocker,&minFraction,blockerHitbox,object.id,targetId,aggressive,object.side,velocity,state);
-		return blocker;
+		if(blocker) return blocker;
+		if(!isFlying&&!state.isOnGround(object.position+offset)) return -1; // LAND::GetHeight<=0
+		return 0;
 	}
 	Vector3f[2] blockerHitbox;
+	auto path=&object.creatureAI.path;
+	bool evade(){
+		path.evasionTime=X87.toFloat(X87.add(path.evasionTime,1.0)); // 0x45c0e0
+		evading=true;
+		return true;
+	}
 	if(auto blocker=whiskerBlocked(facing,0.0f,&blockerHitbox)){
 		static bool covers(Vector3f[2] box,Vector3f position){
 			return box[0].x<=position.x&&position.x<=box[1].x&&
@@ -14319,20 +14252,22 @@ bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPositi
 			state.proximity.collide!bumpCheck(targetBox,object.id,targetId,&covered,state);
 			destinationCovered=covered;
 		}
-		if(nearPathEnd&&destinationCovered){
-			if(blockedAtDestination) *blockedAtDestination=true;
-			object.turnToFaceTowards(targetPosition,state,threshold);
-			object.startMovingForward(state);
-			evading=true;
-			return true;
+		if(destinationCovered){
+			if(path.nearEnd()){ // 0x45be60 returns 3, MoveTo returns -1
+				if(blockedAtDestination) *blockedAtDestination=true;
+				object.turnToFaceTowards(targetPosition,state,threshold);
+				object.startMovingForward(state);
+				evading=true;
+				return true;
+			}
+			path.popNode(); // 0x46fb90
 		}
 		if(isFlying&&!whiskerBlocked(facing,0.75f)){
 			object.creatureState.pitchingSpeedLimit=float.infinity;
 			object.startPitchingUp(state);
 			object.stopTurning(state);
 			object.startMovingForward(state);
-			evading=true;
-			return true;
+			return evade();
 		}
 		static immutable float[5] whiskerOffsets=[0.5f,1.0f,1.5f,2.0f,2.5f];
 		foreach(offset;whiskerOffsets){
@@ -14340,15 +14275,13 @@ bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPositi
 				object.creatureState.rotationSpeedLimit=float.infinity;
 				object.setTurning(RotationDirection.left,state);
 				object.startMovingForward(state);
-				evading=true;
-				return true;
+				return evade();
 			}
 			if(!whiskerBlocked(facing-offset)){
 				object.creatureState.rotationSpeedLimit=float.infinity;
 				object.setTurning(RotationDirection.right,state);
 				object.startMovingForward(state);
-				evading=true;
-				return true;
+				return evade();
 			}
 			if(isFlying&&!whiskerBlocked(facing+offset,0.75f)){ // turn left and climb
 				object.creatureState.rotationSpeedLimit=float.infinity;
@@ -14356,8 +14289,7 @@ bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPositi
 				object.creatureState.pitchingSpeedLimit=float.infinity;
 				object.startPitchingUp(state);
 				object.startMovingForward(state);
-				evading=true;
-				return true;
+				return evade();
 			}
 			if(isFlying&&!whiskerBlocked(facing-offset,0.75f)){ // turn right and climb
 				object.creatureState.rotationSpeedLimit=float.infinity;
@@ -14365,17 +14297,18 @@ bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPositi
 				object.creatureState.pitchingSpeedLimit=float.infinity;
 				object.startPitchingUp(state);
 				object.startMovingForward(state);
-				evading=true;
-				return true;
+				return evade();
 			}
 		}
-		object.stopTurning(state);
+		object.stopTurning(state); // 0x45be60 returns 2: no free direction
 		object.startMovingForward(state);
 		evading=true;
 		return true;
 	}
+	path.evasionTime=X87.toFloat(X87.sub(path.evasionTime,0.1)); // 0x45c110
+	if(path.evasionTime<0.0f) path.evasionTime=0.0f;
 	return object.turnToFaceTowards(targetPosition,state,threshold);
-}+/
+}
 
 bool stop(B)(ref MovingObject!B object,float targetFacing,ObjectState!B state,float threshold=defaultFaceThreshold){
 	object.stopMovement(state);
@@ -14453,9 +14386,8 @@ bool moveTowards(B)(ref MovingObject!B object,Vector3f ultimateTargetPosition,fl
 	bool evading;
 	if(evade){
 		bool blockedAtDestination;
-		auto nearPathEnd=(targetPosition.xy-ultimateTargetPosition.xy).lengthsqr<100.0f;
 		auto excludeId=targetId!=0?targetId:object.creatureAI.order.target.id;
-		object.turnToFaceTowardsEvading(targetPosition,evading,state,defaultFaceThreshold,targetId!=0,excludeId,nearPathEnd,&blockedAtDestination);
+		object.turnToFaceTowardsEvading(targetPosition,evading,state,defaultFaceThreshold,targetId!=0,excludeId,&blockedAtDestination);
 		if(blockedAtDestination) return true;
 		if(evading&&!isFlying) return false;
 	}else object.turnToFaceTowards(targetPosition,state);
