@@ -168,6 +168,8 @@ struct RenderInfo(B){
 	bool gameBlackedOut=false; // the game state is being built, only forms are drawn
 	string lobbyMapFilename=null; // map shown in the lobby (preview picture)
 	const(string)[] lobbyChatMessages; // shown in the lobby ("name: message")
+	const(string)[] lobbyConfiguration; // lines shown below the map picture in the lobby
+	int lobbyChatScroll=0; // lines that the lobby chat is scrolled up (limited by the renderer, which knows the lines)
 	int lobbyNumSlots=0;
 	float loadingProgress=0.0f;
 	string loadingMapFolder=null;
@@ -5979,6 +5981,7 @@ struct Renderer(B){
 		}
 	}
 
+	enum disabledElementBrightness=0.5f; // (elements that cannot be used are drawn darker, also their text)
 	void renderForm(ref SacFormState!B form,ushort formIndex,ref RenderInfo!B info,B.RenderContext rc,bool interactive=true,Vector3f shift=Vector3f(0.0f,0.0f,0.0f),float scaling=float.nan){
 		SacFont!B[FormFont.max+1] fonts;
 		import std.traits: EnumMembers;
@@ -5993,8 +5996,9 @@ struct Renderer(B){
 			B.colorHUDMaterialBackend.setTransformationScaled(offset,rotation,scale,rc);
 			void renderElement(ref SacFormElement!B sacElement,ushort elementIndex,bool active,bool target){
 				if(!elements[elementIndex].visible) return;
-				if(!elements[elementIndex].enabled) B.colorHUDMaterialBackend.setAlpha(0.5f);
-				scope(success) if(!elements[elementIndex].enabled) B.colorHUDMaterialBackend.setAlpha(1.0f);
+				auto brightness=elements[elementIndex].enabled?1.0f:disabledElementBrightness;
+				auto color=Color4f(brightness,brightness,brightness,1.0f);
+				B.colorHUDMaterialBackend.setColor(color);
 				auto elementTarget=Target.onForm(formIndex,elementIndex);
 				assert(elementTarget.formIndex==formIndex&&elementTarget.elementIndex==elementIndex);
 				auto scaledOffset=Vector2f(sacElement.offset.x*scale.x,sacElement.offset.y*scale.y);
@@ -6023,7 +6027,7 @@ struct Renderer(B){
 					if(i==0&&sacElement.type==ElementType.canvas){
 						B.colorHUDMaterialBackend.setColor(Color4f(0.0f,0.0f,0.0f,1.0f));
 						part.mesh[active].render(rc); // TODO: actually get correct canvas contents
-						B.colorHUDMaterialBackend.setColor(Color4f(1.0f,1.0f,1.0f,1.0f));
+						B.colorHUDMaterialBackend.setColor(color);
 					}else if(i+1==sacElement.parts.length&&sacElement.type==ElementType.checkbox){
 						part.mesh[elements[elementIndex].checked].render(rc);
 					}else{
@@ -6038,7 +6042,7 @@ struct Renderer(B){
 					font.write!drawLetter(text.text,offset.x+text.position.x*scale.x,offset.y+text.position.y*scale.y,settings);+/
 					bindFont(font,rc);
 					auto alpha=font.type==FontType.fn08?(target?1.0f:0.75f):1.0f;
-					setFontColor(font,Color4f(1.0f,1.0f,1.0f,alpha));
+					setFontColor(font,Color4f(brightness,brightness,brightness,alpha));
 					const(char)[] textInput=elements[elementIndex].textInput.data[elements[elementIndex].textStart..elements[elementIndex].textEnd];
 					auto displayedText=textInput.length?textInput:text.text;
 					auto textPosition=text.position;
@@ -6058,7 +6062,7 @@ struct Renderer(B){
 					/+B.colorHUDMaterialBackend.bindDiffuse(font.texture);
 					font.write!drawLetter(text,textPosition.x,textPosition.y,settings);+/
 					bindFont(font,rc);
-					setFontColor(font,Color4f(1.0f,1.0f,1.0f,1.0f));
+					setFontColor(font,color);
 					drawText(font,text,textPosition.x,textPosition.y,settings,info,rc);
 					unbindFont(font,rc);
 				}
@@ -6103,38 +6107,59 @@ struct Renderer(B){
 			scaling=min(scaling,cast(float)info.height/sacForm.height,cast(float)info.width/sacForm.width);
 		return scaling;
 	}
-	// lobby chat (form ybol, element tahc): the most recent messages, at the bottom
+	// lobby (form ybol): the most recent chat messages (element tahc), and the game configuration
 	void renderLobbyChat(ref SacFormState!B form,ref RenderInfo!B info,B.RenderContext rc){
 		auto sacForm=form.sacForm;
-		if(sacForm.tag!="ybol"||!info.lobbyChatMessages.length) return;
+		if(sacForm.tag!="ybol") return;
+		foreach(ref sacElement;sacForm.sacElements){
+			if(sacElement.id=="tahc") renderLobbyLines(sacForm,sacElement.offset,sacElement.size,info.lobbyChatMessages,true,info,rc,&info.lobbyChatScroll);
+			if(sacElement.id!="iPAM"||sacElement.subForms.length!=1) continue;
+			foreach(ref mapElement;sacElement.subForms[0].form.sacElements){ // game configuration (below the map picture)
+				enum titleHeight=8.0f;
+				if(mapElement.id=="PYTG") renderLobbyLines(sacForm,sacElement.subForms[0].offset+mapElement.offset+Vector2f(0.0f,titleHeight),mapElement.size-Vector2f(0.0f,titleHeight),info.lobbyConfiguration,false,info,rc,null);
+			}
+		}
+	}
+	// lines of text in a textbox of the lobby form (given relative to the form), broken to fit: the first lines, or the last ones (bottom)
+	// the last ones can be scrolled up by *scroll lines, the lines in view stay the same when further lines are added
+	size_t lobbyLinesScrolled=0; // (number of lines when the text was scrolled up)
+	void renderLobbyLines(SacForm!B sacForm,Vector2f position,Vector2f size,const(string)[] lines,bool bottom,ref RenderInfo!B info,B.RenderContext rc,int* scroll){
+		if(scroll&&!lines.length) *scroll=0;
+		if(!lines.length) return;
 		auto scaling=defaultFormScaling(sacForm,info);
 		auto offset=Vector2f(0.5f*(info.width-scaling*sacForm.width),0.5f*(info.height-scaling*sacForm.height));
-		foreach(ref sacElement;sacForm.sacElements){
-			if(sacElement.id!="tahc") continue;
-			enum border=8.0f, scrollbarWidth=16.0f;
-			auto left=sacElement.offset.x+border, top=sacElement.offset.y+border;
-			auto width=sacElement.size.x-2.0f*border-scrollbarWidth, height=sacElement.size.y-2.0f*border;
-			auto font=formSacFont!B(FormFont.standard);
-			int maxLines=cast(int)(height/font.lineHeight);
-			auto messages=info.lobbyChatMessages;
-			size_t first=messages.length;
-			int numLines=0;
-			while(first>0&&numLines<maxLines) numLines+=countLines(font,messages[--first],width);
-			int skip=max(0,numLines-maxLines); // (lines of the oldest shown message that do not fit)
-			FormatSettings settings={flowType:FlowType.left,scale:scaling};
-			bindFont(font,rc);
-			setFontColor(font,Color4f(1.0f,1.0f,1.0f,1.0f));
-			auto y=offset.y+scaling*top;
-			foreach(message;messages[first..$]){
-				wrapLines(font,message,width,(const(char)[] line){
-					if(skip>0){ skip--; return; }
-					drawText(font,line,offset.x+scaling*left,y,settings,info,rc);
-					y+=scaling*font.lineHeight;
-				});
-			}
-			unbindFont(font,rc);
-			break;
+		enum border=8.0f, scrollbarWidth=16.0f;
+		auto left=position.x+border, top=position.y+border;
+		auto width=size.x-2.0f*border-scrollbarWidth, height=size.y-2.0f*border;
+		auto font=formSacFont!B(FormFont.standard);
+		int maxLines=cast(int)(height/font.lineHeight);
+		size_t first=bottom?lines.length:0;
+		int numLines=0;
+		int scrolled=0;
+		if(scroll){
+			if(*scroll>0&&lobbyLinesScrolled<lines.length)
+				foreach(line;lines[lobbyLinesScrolled..$]) *scroll+=countLines(font,line,width);
+			lobbyLinesScrolled=lines.length;
+			scrolled=max(0,*scroll);
 		}
+		if(bottom) while(first>0&&numLines<maxLines+scrolled) numLines+=countLines(font,lines[--first],width);
+		if(scroll) *scroll=scrolled=min(scrolled,max(0,numLines-maxLines));
+		int skip=max(0,numLines-maxLines-scrolled); // (lines of the first shown message that are above the box)
+		int shown=0;
+		FormatSettings settings={flowType:FlowType.left,scale:scaling};
+		bindFont(font,rc);
+		setFontColor(font,Color4f(1.0f,1.0f,1.0f,1.0f));
+		auto y=offset.y+scaling*top;
+		foreach(message;lines[first..$]){
+			if(shown>=maxLines) break;
+			wrapLines(font,message,width,(const(char)[] line){
+				if(skip>0){ skip--; return; }
+				if(shown++>=maxLines) return;
+				drawText(font,line,offset.x+scaling*left,y,settings,info,rc);
+				y+=scaling*font.lineHeight;
+			});
+		}
+		unbindFont(font,rc);
 	}
 
 	// lobby: numbers of slots after the fourth (the original only has icons for 1-4), centered on the slot number element
@@ -6192,12 +6217,12 @@ struct Renderer(B){
 		renderSacForm(sacForm,info,rc);+/
 		/+auto formInstance=sacFormInstance!B("thci");
 		renderForm(formInstance,info,rc);+/
-		foreach(i,ref form;forms){
-			renderForm(form,to!ushort(i),info,rc);
-		}
 		B.colorHUDMaterialBackend.unbind(null,rc);
-		foreach(ref form;forms){
-			renderLobbyChat(form,info,rc);
+		foreach(i,ref form;forms){
+			B.colorHUDMaterialBackend.bind(null,rc);
+			renderForm(form,to!ushort(i),info,rc);
+			B.colorHUDMaterialBackend.unbind(null,rc);
+			renderLobbyChat(form,info,rc); // (below the forms that follow, e.g. a dialog)
 			renderLobbySlotNumbers(form,info,rc);
 		}
 	}

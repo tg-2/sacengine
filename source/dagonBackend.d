@@ -787,6 +787,8 @@ final class SacScene: Scene{
 	void closeLobbyForm(){
 		if(!lobbyFormOpen) return;
 		lobbyFormOpen=false;
+		lobbyBootSlot=-1;
+		info.lobbyChatScroll=0;
 		forms.length=0;
 		formsReplaced();
 		disableMenu();
@@ -800,15 +802,42 @@ final class SacScene: Scene{
 	bool formTargetValid(){
 		return mouse.target.type!=TargetType.formElement||mouse.target.formIndex<forms.length&&mouse.target.elementIndex<forms[mouse.target.formIndex].elements.length;
 	}
-	// the host left before the game started: window of the original (form hqut), its button quits
+	// the host left before the game started, or booted this player: window of the original (form hqut or boot), its button quits
 	bool hostQuitFormOpen=false;
-	void showHostQuit(){
+	void showLobbyClosed(bool booted){
 		if(hostQuitFormOpen) return;
 		closeLobbyForm();
 		forms.length=0;
-		forms~=sacFormInstance!DagonBackend("tuqh");
+		forms~=sacFormInstance!DagonBackend(booted?"toob":"tuqh");
 		hostQuitFormOpen=true;
 		enableMenu();
+	}
+	// the host boots a player by clicking the type icon of the slot, after confirming it (form BOOT of the original)
+	int lobbyBootSlot=-1, lobbyBootPlayer=-1;
+	void closeLobbyBootForm(){
+		if(lobbyBootSlot==-1) return;
+		lobbyBootSlot=-1;
+		if(forms.length>1) forms.length=1;
+		formsReplaced();
+	}
+	bool askLobbyBoot(int slot){
+		auto data=lobbyView.data;
+		auto action=LobbyAction(LobbyActionType.boot,slot);
+		if(lobbyBootSlot!=-1||!lobbyView.allowed(action)) return false;
+		forms~=sacFormInstance!DagonBackend("TOOB");
+		foreach(ref element;forms[$-1].elements.data){
+			if(element.id!="?OOB") continue;
+			import std.format: format;
+			auto name=data.slots[slot].name.length?data.slots[slot].name:"Anonymous";
+			string question=formTexts.get("?OOB","Are you sure you want to boot %s?");
+			try question=format(question,name);
+			catch(Exception e){}
+			foreach(char c;question) element.textInput~=c;
+			element.textEnd=to!int(element.textInput.length);
+		}
+		lobbyBootSlot=slot;
+		lobbyBootPlayer=data.slots[slot].player;
+		return true;
 	}
 	static string lobbyGodName(ref const LobbySlot slot){
 		static immutable godNames=["Custom","Persephone","Pyro","James","Stratos","Charnel"];
@@ -839,20 +868,98 @@ final class SacScene: Scene{
 			default: return false;
 		}
 	}
+	// chat: the mouse wheel scrolls three lines, the upper and lower half of the scrollbar one line
+	enum lobbyChatWheelLines=3;
+	bool lobbyChatClicked(){
+		auto sacForm=forms[0].sacForm;
+		auto scaling=renderer.defaultFormScaling(sacForm,info);
+		auto position=Vector2f((info.mouse.x-0.5f*(info.width-scaling*sacForm.width))/scaling,(info.mouse.y-0.5f*(info.height-scaling*sacForm.height))/scaling);
+		foreach(ref sacElement;sacForm.sacElements){
+			if(sacElement.id!="tahc") continue;
+			enum scrollbarWidth=24.0f;
+			if(position.x<sacElement.offset.x+sacElement.size.x-scrollbarWidth) return false;
+			info.lobbyChatScroll+=position.y<sacElement.offset.y+0.5f*sacElement.size.y?1:-1;
+			return true;
+		}
+		return false;
+	}
 	bool lobbyElementClicked(int elementIndex){
+		if(forms[0].elements[elementIndex].id=="tahc") return lobbyChatClicked();
 		auto slot=lobbySlotOfElement(elementIndex);
+		if(slot!=-1&&forms[0].elements[elementIndex].id=="eman") return lobbyPasteName(slot);
+		if(slot!=-1&&forms[0].elements[elementIndex].id=="epyt"&&askLobbyBoot(slot)) return true;
 		LobbyAction action;
 		if(slot==-1||!lobbySlotAction(forms[0].elements[elementIndex].id,slot,action)) return false;
 		return lobbyAction(action);
+	}
+	// clicking the name of a player puts it into the chat entry (at the cursor)
+	bool lobbyPasteName(int slot){
+		auto data=lobbyView.data;
+		if(!data||slot>=data.slots.length||!data.slots[slot].name.length) return false;
+		foreach(i,ref entry;forms[0].elements.data){
+			if(entry.type!=.form.ElementType.entrybox||entry.id!="txtc") continue;
+			foreach(dchar d;data.slots[slot].name) entry.enterDchar!DagonBackend(d);
+			forms[0].activeIndex=to!int(i);
+			return true;
+		}
+		return false;
+	}
+	// game configuration shown below the map picture, with the texts of the original's game settings
+	LobbySettings lobbyConfigurationSettings;
+	int[] lobbyConfigurationTeams;
+	string[] lobbyConfiguration;
+	void updateLobbyConfiguration(){
+		auto data=lobbyView.data;
+		if(lobbyConfiguration.length&&lobbyConfigurationSettings==data.settings&&lobbyConfigurationTeams==data.teams) return;
+		lobbyConfigurationSettings=data.settings;
+		lobbyConfigurationTeams=data.teams.dup;
+		lobbyConfiguration.length=0;
+		lobbyConfiguration.assumeSafeAppend();
+		static string label(char[4] tag,string fallback){ return formTexts.get(tag,fallback); }
+		with(data.settings){
+			string type;
+			final switch(gameMode){
+				case GameMode.scenario: type=label("p1TG","Scenario"); break;
+				case GameMode.skirmish: type=label("pmTG","Skirmish"); break;
+				case GameMode.slaughter: type=text(label("lsTG","Slaughter"),": ",gameModeParam," ",label("knTG","kills")); break;
+				case GameMode.domination: type=text(label("mdTG","Domination"),": ",gameModeParam," ",label("amTG","manaliths")); break;
+				case GameMode.soulHarvest: type=text(label("hsTG","Soul Harvest"),": ",gameModeParam," ",label("snTG","souls")); break;
+			}
+			if(data.teams.length){ // (team sizes, e.g. 2v2)
+				int[] sizes;
+				foreach(team;data.teams[0..min($,data.gameSlots)]){
+					if(team<0) continue;
+					if(sizes.length<=team) sizes.length=team+1;
+					sizes[team]++;
+				}
+				type~=sizes.all!(size=>size<=1)?" FFA":text(" ",sizes.map!(size=>text(size)).joiner("v"));
+			}
+			lobbyConfiguration~=type;
+			if(level!=-1&&level!=minLevel) lobbyConfiguration~=text("Level: ",level);
+			if(minLevel!=-1) lobbyConfiguration~=text(label("nilm","Min. level"),": ",minLevel);
+			if(maxLevel!=-1) lobbyConfiguration~=text(label("xaml","Max. level"),": ",maxLevel);
+			if(souls!=-1) lobbyConfiguration~=text(label("rpsn","Starting souls"),": ",souls);
+			if(xpRate>=0.0f) lobbyConfiguration~=text(label("trpx","Experience"),": ",to!int(100.0f*xpRate+0.5f),"%");
+			if(friendlyFire) lobbyConfiguration~=label("riff","Friendly fire");
+			if(collectAlliedSouls) lobbyConfiguration~=label("rpsa","Collect allied souls");
+			if(alwaysGib) lobbyConfiguration~=label("biga","Always gib");
+			if(randomAltars) lobbyConfiguration~=label("clpr","Random altar");
+			if(!mapCreatures) lobbyConfiguration~=label("rcon","No creatures");
+			if(!mapSouls) lobbyConfiguration~=label("sbon","No souls");
+		}
 	}
 	void updateLobbyForm(){
 		auto data=lobbyView.data;
 		info.lobbyMapFilename=lobbyView.mapFilename;
 		info.lobbyChatMessages=lobbyFormOpen?lobbyView.chat:null;
+		info.lobbyConfiguration=null;
 		if(!lobbyVisible||state||!data||!data.slots.length){
 			closeLobbyForm();
 			return;
 		}
+		updateLobbyConfiguration();
+		info.lobbyConfiguration=lobbyConfiguration;
+		if(lobbyBootSlot!=-1&&data.slotOf(lobbyBootPlayer)!=lobbyBootSlot) closeLobbyBootForm(); // (the player left or moved)
 		auto numSlots=to!int(data.slots.length);
 		info.lobbyNumSlots=min(numSlots,data.gameSlots); // (numbered slots)
 		auto formSlots=SacForm!DagonBackend.lobby(numSlots).height; // (the form only changes for more than five slots)
@@ -1036,7 +1143,14 @@ final class SacScene: Scene{
 					else lobbyElementClicked(elementIndex);
 				}
 				break;
-			case "tuqh": // host has quit
+			case "TOOB": // boot a player?
+				if(elementIndex<forms[formIndex].elements.length){
+					auto id=forms[formIndex].elements[elementIndex].id;
+					if(id=="TOOB") lobbyAction(LobbyAction(LobbyActionType.boot,lobbyBootSlot));
+					if(id=="TOOB"||id=="TNOD") closeLobbyBootForm();
+				}
+				break;
+			case "tuqh","toob": // host has quit, booted by the host
 				if(elementIndex<forms[formIndex].elements.length&&forms[formIndex].elements[elementIndex].id=="tuqh")
 					DagonBackend.app.exit();
 				break;
@@ -1069,14 +1183,16 @@ final class SacScene: Scene{
 			if(mbDown!=0){
 				form.activeIndex=mouse.target.elementIndex;
 			}
+			if(lobbyFormOpen&&form.sacForm.tag=="ybol"&&element.id=="tahc")
+				info.lobbyChatScroll+=lobbyChatWheelLines*eventManager.mouseWheelY;
 			if(mbUp!=0){
 				if(elementIndex==form.activeIndex){
 					if(element.activate()){
 						playMenuActionSound();
 						updateForm(formIndex,form.activeIndex);
 						if(formIndex>=forms.length) return;
-					}else if(element.type==.form.ElementType.picture&&form.sacForm.tag=="ybol"){
-						if(lobbyElementClicked(elementIndex)) playMenuActionSound(); // (slot icons)
+					}else if(element.type.among(.form.ElementType.picture,.form.ElementType.textbox)&&form.sacForm.tag=="ybol"){
+						if(lobbyElementClicked(elementIndex)) playMenuActionSound(); // (slot icons, chat scrollbar)
 					}
 				}
 			}
@@ -3095,7 +3211,7 @@ static:
 	// lobby screen: shows the lobby and collects the actions of this player for it
 	void showLobby(LobbyView view){ scene.showLobby(view); }
 	void hideLobby(){ scene.hideLobby(); }
-	void showHostQuit(){ scene.showHostQuit(); }
+	void showLobbyClosed(bool booted){ scene.showLobbyClosed(booted); }
 	ref lobbyActions(){ return scene.lobbyActions; }
 	void focusCamera(int id,bool reset=true){
 		scene.focusCamera(id,reset);

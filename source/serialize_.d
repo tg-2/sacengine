@@ -1227,7 +1227,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Spe
 void serialize(alias sink)(ref Settings settings){ serializeStruct!sink(settings); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Settings)){ deserializeStruct(result,state,data); }
 
-import lobby: LobbySlot, LobbyData, LobbyAction;
+import lobby: LobbySlot, LobbySettings, LobbyData, LobbyAction;
+void serialize(alias sink)(ref LobbySettings settings){ serializeStruct!sink(settings); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==LobbySettings)){ deserializeStruct(result,state,data); }
 void serialize(alias sink)(ref LobbySlot slot){ serializeStruct!sink(slot); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==LobbySlot)){ deserializeStruct(result,state,data); }
 void serialize(alias sink)(ref LobbyData lobby){ serializeStruct!sink(lobby); }

@@ -43,7 +43,9 @@ enum LobbyActionType{
 	toggleReady,
 	takeSlot, // move to an open slot, or swap slots with a computer player (host: also with another player)
 	toggleComputer, // add or remove a computer player
+	boot, // the host removes a player from the game
 	chat,
+	emote, // chat command /me: "* name text"
 	start,
 }
 struct LobbyAction{
@@ -51,11 +53,25 @@ struct LobbyAction{
 	int slot=-1;
 	string text; // chat
 }
+// settings of the game that the lobby shows (chosen by the host)
+struct LobbySettings{
+	GameMode gameMode=GameMode.skirmish;
+	int gameModeParam;
+	int level=-1, minLevel=-1, maxLevel=-1, souls=-1; // (-1: up to each player)
+	float xpRate=-1.0f;
+	bool friendlyFire=true;
+	bool collectAlliedSouls=false;
+	bool alwaysGib=false;
+	bool randomAltars=false;
+	bool mapCreatures=true;
+	bool mapSouls=true;
+}
 struct LobbyData{
 	LobbySlot[] slots;
 	int gameSlots=0; // slots of the game, players who are in a slot after them when the game starts observe it
 	int maxSlots=0; // (slots are added after those of the game up to this number, so that there is an open slot for whoever joins)
 	string map;
+	LobbySettings settings;
 	// chosen by the host for all slots (--gods, --NvN): the players cannot change theirs until the host changes one in the lobby
 	God[] gods; // (God.none: up to the player)
 	int[] teams;
@@ -113,9 +129,10 @@ struct LobbyData{
 		if(action.type<LobbyActionType.min||action.type>LobbyActionType.max) return false;
 		auto own=slotOf(player);
 		final switch(action.type) with(LobbyActionType){
-			case nextGod,nextTeam,toggleReady,takeSlot,toggleComputer:
+			case nextGod,nextTeam,toggleReady,takeSlot,toggleComputer,boot:
 				if(action.slot<0||action.slot>=slots.length) return false;
 				auto type=slots[action.slot].type;
+				if(action.type==boot) return host&&type==LobbySlotType.human&&action.slot!=own;
 				if(action.type==toggleReady) return action.slot==own;
 				bool computer=host&&type==LobbySlotType.computer;
 				if(action.type==nextGod) return action.slot==own||computer; // (fixed god: observe or not)
@@ -123,7 +140,7 @@ struct LobbyData{
 				if(action.type==toggleComputer) return host&&type!=LobbySlotType.human&&action.slot<gameSlots;
 				if(type==LobbySlotType.computer&&own>=gameSlots) return false; // (computer players do not observe)
 				return own!=-1&&action.slot!=own&&(host||type!=LobbySlotType.human);
-			case chat: return action.text.length&&action.text.length<=chatMessageLimit;
+			case chat,emote: return action.text.length&&action.text.length<=chatMessageLimit;
 			case start: return host;
 		}
 	}
@@ -780,14 +797,16 @@ class Lobby(B){
 		return true;
 	}
 
+	bool booted=false;
 	bool update(ref Options options)in{
 		with(LobbyState)
 		assert(state.among(offline,connected,synched,commitHashReady,waitingForClients,readyToLoad));
 	}do{
 		//writeln(state," ",network.players.map!((ref p)=>p.status));
-		if(network&&!isHost&&network.hostDropped){ // (before the game has started)
+		if(network&&!isHost&&network.me!=-1&&network.players[network.me].status==PlayerStatus.dropped) booted=true; // (by the host)
+		if(network&&!isHost&&(booted||network.hostDropped)){ // (before the game has started)
 			B.hideLobby();
-			B.showHostQuit();
+			B.showLobbyClosed(booted);
 			return false;
 		}
 		if(network){
@@ -954,6 +973,20 @@ class Lobby(B){
 		data.gameSlots=to!int(data.slots.length);
 		data.maxSlots=network?max(data.gameSlots,lobbySlotLimit):data.gameSlots; // (nobody joins a local game)
 		data.map=options.map;
+		with(data.settings){
+			gameMode=options.gameMode;
+			gameModeParam=options.gameModeParam;
+			if(!network||options.synchronizeLevel) level=options.level;
+			if(!network||options.synchronizeLevelBounds) minLevel=options.minLevel, maxLevel=options.maxLevel;
+			if(!network||options.synchronizeSouls) souls=options.souls;
+			if(!network||options.synchronizeXpRate) xpRate=options.xpRate;
+			friendlyFire=options.friendlyFire;
+			collectAlliedSouls=options.collectAlliedSouls;
+			alwaysGib=options.alwaysGib;
+			randomAltars=options.shuffleAltars||options.shuffleSides||options.shuffleSlots;
+			mapCreatures=options.mapCreatures;
+			mapSouls=options.mapSouls;
+		}
 		data.gods=options.gods.dup;
 		if(options.gameMode!=GameMode.scenario&&options.teamSizes.length)
 			data.teams=teamSizesToTeams(options.teamSizes).take(data.slots.length).array;
@@ -1003,9 +1036,32 @@ class Lobby(B){
 		}else update(me,options.settings,true,true);
 		data.applyRules();
 	}
+	// computer players get a random name that no other player in the lobby has (unless they were named with --bot-names)
+	void nameComputers(){
+		import nttData: randomWizardName;
+		foreach(ref slot;data.slots){
+			if(slot.type!=LobbySlotType.computer||slot.name.length) continue;
+			foreach(_;0..16){
+				slot.name=randomWizardName();
+				if(data.slots.count!((ref other)=>other.name==slot.name)==1) break;
+			}
+		}
+	}
 	string playerName(int player,ref Options options){
 		auto name=network?network.players[player].settings.name:options.name;
 		return name.length?name:"Anonymous";
+	}
+	// chat messages of this player that start with '/' are commands: "/me text" becomes an emote,
+	// other commands are not sent (returns false), the player gets a line that only they see
+	bool chatCommand(ref LobbyAction action){
+		if(action.type!=LobbyActionType.chat||!action.text.startsWith("/")) return true;
+		auto command=action.text.findSplit(" ");
+		if(command[0]=="/me"){
+			action=LobbyAction(LobbyActionType.emote,-1,command[2].strip);
+			return true;
+		}
+		chat~=text("Unknown command ",command[0]," (commands: /me)");
+		return false;
 	}
 	void say(string line)in{
 		assert(isHost);
@@ -1024,6 +1080,14 @@ class Lobby(B){
 				import std.utf: validate;
 				validate(action.text);
 				say(text(playerName(player,options),": ",action.text));
+				break;
+			case LobbyActionType.emote:
+				import std.utf: validate;
+				validate(action.text);
+				say(text("* ",playerName(player,options)," ",action.text));
+				break;
+			case LobbyActionType.boot: // (the others see that the player has left)
+				if(network) network.kickPlayer(data.slots[action.slot].player,null);
 				break;
 			case LobbyActionType.start: startRequested=true; break;
 			default: data.apply(player,host,action); break;
@@ -1059,6 +1123,7 @@ class Lobby(B){
 		if(!lobbyInitialized) initializeLobby(options);
 		updatePlayers(options);
 		foreach(ref action;B.lobbyActions.data){
+			if(!chatCommand(action)) continue;
 			try perform(me,action,options);
 			catch(Exception e){}
 		}
@@ -1074,6 +1139,7 @@ class Lobby(B){
 			}
 			network.lobbyActions.length=0;
 		}
+		nameComputers();
 		publish();
 		bool canStart=(!network||allPlayersWaiting())&&playersReady();
 		bool start=canStart&&(startRequested||!lobbyShown(options)||options.autoStart&&enoughPlayers(options));
@@ -1103,7 +1169,7 @@ class Lobby(B){
 		}
 		network.lobbyMessages.length=0;
 		foreach(ref action;B.lobbyActions.data)
-			if(data.allowed(me,false,action)) action.serialized(&network.sendLobbyAction);
+			if(chatCommand(action)&&data.allowed(me,false,action)) action.serialized(&network.sendLobbyAction);
 		B.lobbyActions.length=0;
 		if(data.slots.length) B.showLobby(LobbyView(&data,me,false,false,chat.data,options.map));
 	}
