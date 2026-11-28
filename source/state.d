@@ -17942,6 +17942,22 @@ Vector3f[2] needleParticlesReach(B)(Vector3f position,Vector3f needleDirection){
 	}
 }
 
+enum sacDocAltarApproachDistance=15.0f, sacDocAltarArrivalRadius=5.0f;
+// original (0x44ea60): the point at distance 15 from the altar on the line towards the sac doctor (in 3D)
+Vector3f sacDocAltarApproachPosition(B)(Vector3f sacDocPosition,Vector3f shrinePosition,ObjectState!B state){
+	auto direction=sacDocPosition-shrinePosition;
+	auto length=direction.length;
+	auto result=length!=0.0f?shrinePosition+(sacDocAltarApproachDistance/length)*direction:sacDocPosition;
+	if(state.isOnGround(result)) result.z=state.getGroundHeight(result);
+	return result;
+}
+// original (0x4700e0): a target in a different region of the pathfinder, or outside of any region (void), cannot be reached
+bool sacDocCanReach(B)(Vector3f position,Vector3f targetPosition,ObjectState!B state){
+	auto startId=state.pathFinder.getComponentId(position,state);
+	if(startId==-1) return true; // own position not on the pathfinding grid: keep walking
+	return startId==state.pathFinder.getComponentId(targetPosition,state);
+}
+
 bool updateSacDocCarry(B)(ref SacDocCarry!B sacDocCarry,ObjectState!B state){
 	static void freeSoulImpl(SacDocCarry!B* sacDocCarry,ObjectState!B state){
 		state.soulById!((ref soul,side){
@@ -18119,15 +18135,30 @@ bool updateSacDocCarry(B)(ref SacDocCarry!B sacDocCarry,ObjectState!B state){
 						state.movingObjectById!(freeCreature,()=>false)(creature,sacDoc.position,state);
 						status=SacDocCarryStatus.shrinking;
 						tether=SacDocTether.init;
-					}else if(sacDoc.creatureState.movement==CreatureMovement.onGround && (sacDoc.position-shrinePosition).lengthsqr<20.0f^^2 && startRitual(type,side,spell,caster,targetShrine,creature,state)){
-						status=SacDocCarryStatus.shrinking;
-						tether=SacDocTether.init;
-						sacDoc.kill(state);
-					}else if(needsOrder(sacDoc,*sacDocCarry,state)){
-						auto ord=Order(CommandType.move,OrderTarget(TargetType.building,targetShrine,shrinePosition));
-						sacDoc.order(ord,state);
 					}else{
-						sacDoc.creatureAI.order.target.position=shrinePosition;
+						// original (SACDOC_MoveTowardsAltar 0x449eb0): the doctor walks to the point 15 units from the
+						// altar towards itself (0x44ea60, 3D) and has arrived within 5 units of it (MoveTo 0x45b620).
+						// MoveTo also returns nonzero (-1) if the target is unreachable (0x4700e0: different region),
+						// which counts as arrived: the doctor then asks the altar for the ritual right where it stands
+						// (event 29, SACDOC_RequestSacrifice 0x449c70; the altar does not check the distance).
+						auto targetPosition=sacDocAltarApproachPosition(sacDoc.position,shrinePosition,state);
+						bool onGround=sacDoc.creatureState.movement==CreatureMovement.onGround;
+						bool arrived=(sacDoc.position.xy-targetPosition.xy).lengthsqr<=sacDocAltarArrivalRadius^^2;
+						bool unreachable=onGround&&!arrived&&!sacDocCanReach(sacDoc.position,targetPosition,state);
+						if(onGround&&(arrived||unreachable)&&startRitual(type,side,spell,caster,targetShrine,creature,state)){
+							status=SacDocCarryStatus.shrinking;
+							tether=SacDocTether.init;
+							sacDoc.kill(state);
+						}else if(unreachable){
+							// original: MoveTo returns -1 and stops the doctor; it stands there until the altar is free
+							if(sacDoc.hasOrders(state)) sacDoc.clearOrderQueue(state);
+							sacDoc.stopMovement(state);
+						}else if(needsOrder(sacDoc,*sacDocCarry,state)){
+							auto ord=Order(CommandType.move,OrderTarget(TargetType.terrain,0,targetPosition));
+							sacDoc.order(ord,state);
+						}else{
+							sacDoc.creatureAI.order.target.position=targetPosition;
+						}
 					}
 					break;
 				case SacDocCarryStatus.shrinking:
