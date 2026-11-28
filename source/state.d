@@ -658,9 +658,9 @@ struct Path{
 		evasionTime=0.0f;
 		age=0.0f;
 	}
-	PathResult nextTarget(B)(Vector3f currentPosition,Vector3f newTarget,out Vector3f waypoint,bool mayRecompute,ObjectState!B state){
+	PathResult nextTarget(B)(Vector3f currentPosition,Vector3f newTarget,out Vector3f waypoint,ObjectState!B state){
 		state.applyEdgeChanges();
-		return state.pathFinder.follow(this,currentPosition,newTarget,waypoint,mayRecompute,state);
+		return state.pathFinder.follow(this,currentPosition,newTarget,waypoint,state);
 	}
 	// 0x470090: the path is about to end (fewer than three nodes or the creature's node is close to the target)
 	bool nearEnd(){
@@ -1076,7 +1076,7 @@ class PathFinder(B){
 		return true;
 	}
 	// 0x46fd10
-	PathResult follow(ref Path path,Vector3f start,Vector3f target,out Vector3f waypoint,bool mayRecompute,ObjectState!B state){
+	PathResult follow(ref Path path,Vector3f start,Vector3f target,out Vector3f waypoint,ObjectState!B state){
 		bool recompute=path.nodes.length<2;
 		if(!recompute){
 			if(path.evasionTime>=60.0f&&path.age>1.0f) recompute=true;
@@ -1091,10 +1091,6 @@ class PathFinder(B){
 					if(targetMovement>limit||!valid(path,state)) recompute=true;
 				}
 			}
-		}
-		if(recompute&&!mayRecompute){ // waits for its turn in the AI queue
-			if(path.nodes.length<2) return PathResult.direct;
-			recompute=false;
 		}
 		if(recompute){
 			path.reset();
@@ -14333,7 +14329,7 @@ bool moveTowards(B)(ref MovingObject!B object,Vector3f ultimateTargetPosition,fl
 	if(isFlying||disablePathfinding) object.creatureAI.path.reset();
 	else{ // 0x45b780, ground branch
 		Vector3f waypoint;
-		final switch(object.creatureAI.path.nextTarget(object.position,ultimateTargetPosition,waypoint,state.frontOfAIQueue(object.side,object.id),state)){
+		final switch(object.creatureAI.path.nextTarget(object.position,ultimateTargetPosition,waypoint,state)){
 			case PathResult.unreachable: // MoveTo returns -1: stop, the move is over
 				object.stopMovement(state);
 				object.stopTurning(state);
