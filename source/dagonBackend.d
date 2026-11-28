@@ -238,7 +238,7 @@ final class SacScene: Scene{
 			dismissedTipSide: triggerDismissedTipSide,
 			dismissedTipStartTick: triggerDismissedTipStartTick,
 			dismissedTipText: triggerDismissedTipText};
-		auto networkState=controller&&controller.network?controller.network.networkState:null;
+		auto networkState=controller?controller.sidechannel:null;
 		renderer.renderEntities2D(r2dopt,state?state.current:null,networkState,forms.data,info,rc);
 	}
 

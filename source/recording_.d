@@ -24,9 +24,16 @@ class Recording(B){
 	GameInit!B gameInit;
 	bool finalized=false;
 	Array!(Array!(Command!B)) commands;
+	// observer chat: not part of the game state, shown when the replay reaches the frame where it was received
+	Array!(ChatMessage!B) sidechannelChatMessages;
+	void addSidechannelChatMessage(ChatMessage!B message){
+		if(finalized) return;
+		sidechannelChatMessages~=move(message);
+	}
 	void finalize(ref Array!(Array!(Command!B)) commands){
 		if(finalized) return;
 		this.commands=commands;
+		sort!((ref a,ref b)=>a.startFrame<b.startFrame,SwapStrategy.stable)(sidechannelChatMessages.data);
 		sort!((a,b)=>a.frame<b.frame,SwapStrategy.stable)(stateReplacements.data);
 		sort!((a,b)=>a.desynchedState.frame<b.desynchedState.frame,SwapStrategy.stable)(desynchs.data);
 		finalized=true;

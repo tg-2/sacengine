@@ -1553,6 +1553,39 @@ final class Network(B){
 		if(isHost) addCommand(-1,Command!B(-1,chatMessage));
 		if(networkState) networkState.chatMessages.addChatMessage(move(chatMessage));
 	}
+	enum chatMessageLimit=512;
+	// checks chat that the host forwards outside of the game state, and puts the host's values into it
+	bool authorizeSidechannelChatMessage(int sender,ref ChatMessage!B message,Controller!B controller)in{
+		assert(isHost&&!!controller);
+	}do{
+		bool observer=!players[sender].isControllingState;
+		if(message.content.message.length>chatMessageLimit||message.content.title.length>chatMessageLimit){
+			report!true(sender,"sent a chat message that is too long");
+			return false;
+		}
+		if(observer){
+			if(message.senderSlot!=players[sender].slot){
+				report!true(sender,"tried to impersonate another player (slot ",message.senderSlot,")");
+				disconnectPlayer(sender,controller);
+				return false;
+			}
+			if(!players[sender].settings.observerChat){
+				report!true(sender,"tried to send an observer chat message while muted");
+				return false;
+			}
+			message.slotFilter=-1;
+			message.content.type=ChatMessageType.observer;
+			auto name=players[sender].settings.name;
+			if(!name.length) name="Anonymous";
+			message.content.title.length=0;
+			foreach(char c;name) message.content.title~=c;
+		}else{
+			message.senderSlot=players[sender].slot;
+			message.content.type=ChatMessageType.standard;
+		}
+		adjustChatMessage(message,controller.currentFrame);
+		return true;
+	}
 	this(){
 		// makeListener
 		networkState=new NetworkState!B();
@@ -2238,33 +2271,11 @@ final class Network(B){
 								report(sender,"sent an unauthorized command");
 								return false;
 							}
-							if(isHost&&p.frame==-1&&command.type==CommandType.chatMessage&&command.id==0){
-								if(players[sender].isControllingState){
-									report!true(sender,"tried to send an observer chat message while not being an observer");
-									return false;
-								}
-								if(command.chatMessage.senderSlot!=players[sender].slot){
-									report!true(sender,"tried to impersonate another player (slot ",command.chatMessage.senderSlot,")");
-									disconnectPlayer(sender,controller);
-									return false;
-								}
-								if(!players[sender].settings.observerChat){
-									report!true(sender,"tried to send an observer chat message while muted");
-									return false;
-								}
-								adjustChatMessage(command.chatMessage,controller.currentFrame);
-								with(command.chatMessage){
-									slotFilter=-1;
-									content.type=ChatMessageType.observer;
-								}
-								if(controller&&playing){
-									controller.addCommand(command);
-									return false;
-								}
-							}
 							if(command.type==CommandType.chatMessage&&command.id==0&&networkState){
-								// TODO: properly authorize observer chat
-								networkState.chatMessages.addChatMessage(command.chatMessage);
+								// chat that is not part of the game state (observer chat, chat while the game is not running)
+								if(isHost&&!authorizeSidechannelChatMessage(sender,command.chatMessage,controller))
+									return false;
+								controller.addSidechannelChatMessage(command.chatMessage);
 								if(isHost){
 									command.withRawCommandData((scope ubyte[] rawData){
 										forwardPacket(sender,Packet.commandRaw(controller.currentFrame,command,rawData.length),rawData,controller);
