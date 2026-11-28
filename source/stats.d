@@ -49,6 +49,7 @@ struct Effects{
 	bool desecrateCarried=false;
 	bool desecrationVictim=false;
 	bool isGuardian=false;
+	int guardianBuilding=0; // building guarded by the guardian spell (original: creature +0x5c8)
 	int numCharms=0;
 	int poisonDamage=0;
 	int poisonResistance=0;
