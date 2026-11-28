@@ -113,6 +113,14 @@ final class AudioBackend(B){
 		themes[currentTheme].source.gain=musicGain;
 		themes[currentTheme].play();
 	}
+	// stops the current theme at once (also a theme that is played once) and plays next instead
+	void restartTheme(Theme next){
+		if(currentTheme!=Theme.none) themes[currentTheme].stop();
+		currentTheme=Theme.none;
+		nextTheme=next;
+		themeAfter=Theme.none;
+		themeGain=1.0f;
+	}
 	enum fadeOutTime=0.5f;
 	void stopTheme(){
 		themeGain=0.0f;
