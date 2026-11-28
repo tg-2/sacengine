@@ -180,6 +180,12 @@ final class SacObject(B){
 		return data.soulDisplacement;
 	}
 
+	@property float manaGainFactor(){
+		if(cre8) return cre8.manaGainFactor*1e-3f;
+		if(wizd) return wizd.manaGainFactor*1e-3f;
+		return 1.0f;
+	}
+
 	@property float meleeStrength(){
 		if(cre8) return cre8.meleeStrength;
 		return 0.0f;

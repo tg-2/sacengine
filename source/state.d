@@ -10239,6 +10239,8 @@ void drainMana(B)(ref MovingObject!B object,float amount,ObjectState!B state){
 
 void giveMana(B)(ref MovingObject!B object,float amount,ObjectState!B state){
 	if(object.creatureStats.effects.manaBlocked) return;
+	// original: every mana gain (but not mana loss) is multiplied by stat 20
+	if(amount>0.0f) amount*=object.sacObject.manaGainFactor;
 	object.creatureStats.mana=min(object.creatureStats.mana+amount,object.creatureStats.maxMana);
 }
 
@@ -16695,7 +16697,7 @@ void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.isGuardian)
 		object.heal(1000.0f/(60*updateFPS),state);
 	if(object.creatureState.mode.canRegenerateMana&&(object.creatureStats.mana<object.creatureStats.maxMana||object.isGhost))
-		object.giveMana(state.manaRegenAt(object.side,object.position)/updateFPS,state);
+		object.giveMana(state.manaRegenAt(object.side,object.position,object.creatureStats.maxMana-object.creatureStats.mana)/updateFPS,state);
 	if(object.creatureState.mode.among(CreatureMode.meleeMoving,CreatureMode.meleeAttacking) && object.hasAttackTick(state)){
 		object.creatureState.mode=CreatureMode.meleeAttacking;
 		if(auto target=object.meleeAttackTarget(state)){ // TODO: factor this out into its own function?
@@ -30949,6 +30951,14 @@ void addToProximitySingle(T,B)(ref T obj, ObjectState!B state){
 	}else static assert(0);
 }
 
+void addManaDemand(B)(ref MovingObject!B object,ObjectState!B state){
+	// needs to be kept in synch with the mana regeneration condition in updateCreatureStats
+	if(!object.creatureState.mode.canRegenerateMana) return;
+	auto missingMana=object.creatureStats.maxMana-object.creatureStats.mana;
+	if(missingMana<=0.0f) return;
+	state.proximity.addManaDemand(object.side,object.position,missingMana);
+}
+
 void addVinesToProximity(B)(ObjectState!B state){
 	foreach(ref vines;state.obj.opaqueObjects.effects.graspingViness.data){
 		if(isNaN(vines.preTeleportPosition.x)) continue;
@@ -31077,6 +31087,8 @@ struct ManaEntry{
 	Vector3f position;
 	float radius;
 	float rate;
+	bool split=false; // rate is shared among receivers proportionally to their missing mana (manahoar)
+	float demand=0.0f; // total missing mana of all receivers in range (only used if split)
 }
 struct ManaEntries{
 	int version_=0;
@@ -31089,7 +31101,7 @@ struct ManaEntries{
 		}
 		entries~=entry;
 	}
-	float manaRegenAt(B)(int version_,int side,Vector3f position,ObjectState!B state){
+	float manaRegenAt(B)(int version_,int side,Vector3f position,float missingMana,ObjectState!B state){
 		if(this.version_!=version_){
 			entries.length=0;
 			this.version_=version_;
@@ -31098,10 +31110,26 @@ struct ManaEntries{
 		foreach(ref entry;entries.data){
 			auto distance=(position-entry.position).length;
 			if(distance>=entry.radius) continue;
-			if(entry.side!=-1&&(!entry.allies?entry.side!=side:state.getStance(entry.side,side)!=Stance.ally)) continue;
-			rate+=entry.rate;
+			// original: allied in either direction (or same side)
+			if(entry.side!=-1&&(!entry.allies?entry.side!=side:state.getStance(entry.side,side)!=Stance.ally&&state.getStance(side,entry.side)!=Stance.ally)) continue;
+			if(entry.split){
+				if(entry.demand<=0.0f||missingMana<=0.0f) continue;
+				rate+=entry.rate*min(1.0f,missingMana/entry.demand);
+			}else rate+=entry.rate;
 		}
 		return rate;
+	}
+	void addManaDemand(int version_,int side,Vector3f position,float missingMana){
+		if(this.version_!=version_){
+			entries.length=0;
+			this.version_=version_;
+		}
+		foreach(ref entry;entries.data){
+			if(!entry.split||entry.side!=side) continue;
+			auto distance=(position-entry.position).length;
+			if(distance>=entry.radius) continue;
+			entry.demand+=missingMana;
+		}
 	}
 }
 
@@ -31151,23 +31179,34 @@ struct ManaProximity(B){
 		}
 		float rate=0.0f;
 		foreach(ref manalith;manaliths.data){
-			if(state.getStance(manalith.side,side)!=Stance.ally) continue;
+			if(state.getStance(manalith.side,side)!=Stance.ally&&state.getStance(side,manalith.side)!=Stance.ally) continue;
 			auto distance=(position-manalith.position).length;
 			rate+=max(0.0f,min((20.0f/50.0f)*distance,(20.0f/(1000.0f-50.0f))*(1000.0f-distance)));
 		}
-		addEntry(version_,ManaEntry(false,side,position,40.0f,rate));
+		// original: the manahoar's rate is split among its own side's creatures and wizards within 40 that are missing mana,
+		// proportionally to how much mana each of them is missing (it is not given in full to every receiver)
+		addEntry(version_,ManaEntry(false,side,position,40.0f,rate,true));
 		return rate;
 	}
-	float manaRegenAt(int version_,int side,Vector3f position,ObjectState!B state){
+	float manaRegenAt(int version_,int side,Vector3f position,float missingMana,ObjectState!B state){
 		auto offset=Vector3f(50.0f,50.0f,0.0f);
 		auto lowTile=getTile(position-offset), highTile=getTile(position+offset);
 		float rate=0.0f;
 		if(lowTile.j+offMapSlack<0||lowTile.i+offMapSlack<0||highTile.j+offMapSlack>=size||highTile.i+offMapSlack>=size)
-			rate+=offMap.manaRegenAt(version_,side,position,state);
+			rate+=offMap.manaRegenAt(version_,side,position,missingMana,state);
 		foreach(j;max(0,lowTile.j+offMapSlack)..min(highTile.j+offMapSlack+1,size))
 			foreach(i;max(0,lowTile.i+offMapSlack)..min(highTile.i+offMapSlack+1,size))
-				rate+=data[j][i].manaRegenAt(version_,side,position,state);
+				rate+=data[j][i].manaRegenAt(version_,side,position,missingMana,state);
 		return rate;
+	}
+	void addManaDemand(int version_,int side,Vector3f position,float missingMana){
+		auto offset=Vector3f(50.0f,50.0f,0.0f);
+		auto lowTile=getTile(position-offset), highTile=getTile(position+offset);
+		if(lowTile.j+offMapSlack<0||lowTile.i+offMapSlack<0||highTile.j+offMapSlack>=size||highTile.i+offMapSlack>=size)
+			offMap.addManaDemand(version_,side,position,missingMana);
+		foreach(j;max(0,lowTile.j+offMapSlack)..min(highTile.j+offMapSlack+1,size))
+			foreach(i;max(0,lowTile.i+offMapSlack)..min(highTile.i+offMapSlack+1,size))
+				data[j][i].addManaDemand(version_,side,position,missingMana);
 	}
 }
 
@@ -31308,8 +31347,13 @@ final class Proximity(B){
 	float addManahoar(int side,int id,Vector3f position,ObjectState!B state){
 		return mana.addManahoar(version_,side,position,state);
 	}
-	float manaRegenAt(int side,Vector3f position,ObjectState!B state){
-		return mana.manaRegenAt(version_,side,position,state);
+	float manaRegenAt(int side,Vector3f position,float missingMana,ObjectState!B state){
+		return mana.manaRegenAt(version_,side,position,missingMana,state);
+	}
+	void addManaDemand(int side,Vector3f position,float missingMana)in{
+		assert(active);
+	}do{
+		mana.addManaDemand(version_,side,position,missingMana);
 	}
 	CenterProximity!B centers;
 	void insertCenter(CenterProximityEntry entry)in{
@@ -31437,8 +31481,8 @@ final class ObjectState(B){ // (update logic)
 	PathFinder!B pathFinder;
 	DangerGrid dangerGrid;
 	Triggers!B triggers;
-	float manaRegenAt(int side,Vector3f position){
-		return proximity.manaRegenAt(side,position,this);
+	float manaRegenAt(int side,Vector3f position,float missingMana){
+		return proximity.manaRegenAt(side,position,missingMana,this);
 	}
 	float incomingDamageMultiplier(int side){
 		if(!(0<=side&&side<sid.sides.length)) return 1.0f;
@@ -31994,6 +32038,7 @@ final class ObjectState(B){ // (update logic)
 		frameprof.mark("beginTriggers");
 		this.eachByType!(addToProximity,EachByTypeFlags.none)(this);
 		addVinesToProximity(this);
+		this.eachMoving!addManaDemand(this);
 		frameprof.mark("proximity+vision");
 		this.eachEffects!updateEffects(this);
 		frameprof.mark("effects");

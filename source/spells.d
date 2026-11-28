@@ -47,7 +47,7 @@ struct Cre8{
 	ushort sightFov; // field of view half-angle = pi/4*sqrt(sightFov/1000).
 	ushort god;
 	ushort souls;
-	ushort unknown20; // some multiplier?
+	ushort manaGainFactor; // stat 20 in the original, in thousandths: every mana gain of the creature is multiplied by it (e.g. 1000 wizards, 800 James creatures, 600 Charnel creatures, 0 familiar)
 	uint unknown21; // unused?
 	char[4] ability0; // refers to @ABI
 	char[4] ability1;
@@ -112,7 +112,7 @@ struct Wizd{
 	ushort unknown18; // some multiplier?
 	ushort unknown19; // a small number
 	ushort souls=0;
-	ushort unknown20; // some multiplier?
+	ushort manaGainFactor; // stat 20 in the original, in thousandths: every mana gain of the creature is multiplied by it (e.g. 1000 wizards, 800 James creatures, 600 Charnel creatures, 0 familiar)
 	uint unknown21; // unused?
 	char[4] ability1; // refers to @ABI
 	char[4] ability2;
