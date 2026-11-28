@@ -5981,6 +5981,7 @@ struct Renderer(B){
 		}
 	}
 
+	enum disabledElementBrightness=0.5f; // (elements that cannot be used are drawn darker, also their text)
 	void renderForm(ref SacFormState!B form,ushort formIndex,ref RenderInfo!B info,B.RenderContext rc,bool interactive=true,Vector3f shift=Vector3f(0.0f,0.0f,0.0f),float scaling=float.nan){
 		SacFont!B[FormFont.max+1] fonts;
 		import std.traits: EnumMembers;
@@ -5995,8 +5996,9 @@ struct Renderer(B){
 			B.colorHUDMaterialBackend.setTransformationScaled(offset,rotation,scale,rc);
 			void renderElement(ref SacFormElement!B sacElement,ushort elementIndex,bool active,bool target){
 				if(!elements[elementIndex].visible) return;
-				if(!elements[elementIndex].enabled) B.colorHUDMaterialBackend.setAlpha(0.5f);
-				scope(success) if(!elements[elementIndex].enabled) B.colorHUDMaterialBackend.setAlpha(1.0f);
+				auto brightness=elements[elementIndex].enabled?1.0f:disabledElementBrightness;
+				auto color=Color4f(brightness,brightness,brightness,1.0f);
+				B.colorHUDMaterialBackend.setColor(color);
 				auto elementTarget=Target.onForm(formIndex,elementIndex);
 				assert(elementTarget.formIndex==formIndex&&elementTarget.elementIndex==elementIndex);
 				auto scaledOffset=Vector2f(sacElement.offset.x*scale.x,sacElement.offset.y*scale.y);
@@ -6025,7 +6027,7 @@ struct Renderer(B){
 					if(i==0&&sacElement.type==ElementType.canvas){
 						B.colorHUDMaterialBackend.setColor(Color4f(0.0f,0.0f,0.0f,1.0f));
 						part.mesh[active].render(rc); // TODO: actually get correct canvas contents
-						B.colorHUDMaterialBackend.setColor(Color4f(1.0f,1.0f,1.0f,1.0f));
+						B.colorHUDMaterialBackend.setColor(color);
 					}else if(i+1==sacElement.parts.length&&sacElement.type==ElementType.checkbox){
 						part.mesh[elements[elementIndex].checked].render(rc);
 					}else{
@@ -6040,7 +6042,7 @@ struct Renderer(B){
 					font.write!drawLetter(text.text,offset.x+text.position.x*scale.x,offset.y+text.position.y*scale.y,settings);+/
 					bindFont(font,rc);
 					auto alpha=font.type==FontType.fn08?(target?1.0f:0.75f):1.0f;
-					setFontColor(font,Color4f(1.0f,1.0f,1.0f,alpha));
+					setFontColor(font,Color4f(brightness,brightness,brightness,alpha));
 					const(char)[] textInput=elements[elementIndex].textInput.data[elements[elementIndex].textStart..elements[elementIndex].textEnd];
 					auto displayedText=textInput.length?textInput:text.text;
 					auto textPosition=text.position;
@@ -6060,7 +6062,7 @@ struct Renderer(B){
 					/+B.colorHUDMaterialBackend.bindDiffuse(font.texture);
 					font.write!drawLetter(text,textPosition.x,textPosition.y,settings);+/
 					bindFont(font,rc);
-					setFontColor(font,Color4f(1.0f,1.0f,1.0f,1.0f));
+					setFontColor(font,color);
 					drawText(font,text,textPosition.x,textPosition.y,settings,info,rc);
 					unbindFont(font,rc);
 				}
