@@ -30,7 +30,10 @@ enum OilStatus{
 }
 struct Effects{
 	int numSpeedUps=0;
-	float speedUp=1.0f;
+	float speedUp=1.0f; // target running speed factor of the active speed ups (product of fmul)
+	float speedUpFlying=1.0f; // target flying speed factor (product of 1+0.5·(fmul-1))
+	float speedUpBonus=0.0f; // current running speed bonus (m/s), approaches runningSpeed·(speedUp-1)
+	float speedUpBonusFlying=0.0f; // current flying speed bonus (m/s), approaches flyingSpeed·(speedUpFlying-1)
 	int speedUpUpdateFrame=-1;
 	int speedUpFrame=-1;
 	float healPerFrame=0.0f;
@@ -124,8 +127,9 @@ import dlib.math.portable: pi;
 	return 0.75f;
 }
 @property float movementSpeed(ref CreatureStats stats,bool isFlying){ // in meters per second
-	auto effectFactor=stats.effects.speedUp*(isFlying?1.0f:0.2f^^stats.effects.numSlimes)*0.8f^^stats.effects.numBlightMites*0.75f^^stats.effects.numStickyBombs*0.6f^^stats.effects.numRainFrogs*(stats.effects.lightningCharged?1.5f:1.0f)*(stats.effects.wailingWall?0.75f:1.0f)*(stats.effects.wallOfSpikes?0.5f:1.0f); // TODO: probably slowdowns should be interpolated too
-	return (isFlying?stats.flyingSpeed:stats.runningSpeed)*effectFactor;
+	auto speed=isFlying?stats.flyingSpeed+stats.effects.speedUpBonusFlying:stats.runningSpeed+stats.effects.speedUpBonus;
+	auto effectFactor=(isFlying?1.0f:0.2f^^stats.effects.numSlimes)*0.8f^^stats.effects.numBlightMites*0.75f^^stats.effects.numStickyBombs*0.6f^^stats.effects.numRainFrogs*(stats.effects.lightningCharged?1.5f:1.0f)*(stats.effects.wailingWall?0.75f:1.0f)*(stats.effects.wallOfSpikes?0.5f:1.0f); // TODO: probably slowdowns should be interpolated too
+	return speed*effectFactor;
 }
 @property float movementAcceleration(ref CreatureStats stats,bool isFlying){
 	if(isFlying) return 0.45f*60.0f; // TODO: ok?

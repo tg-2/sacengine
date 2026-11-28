@@ -3765,6 +3765,7 @@ struct SpeedUp(B){
 	int creature;
 	int framesLeft;
 	int particleEmitter=0; // particle emitter handle (speedUpParticles)
+	float fmul=2.0f; // SPEL argument fmul (spup 2.0, run! 2.25): running speed ×fmul, flying speed ×(1+0.5·(fmul-1))
 }
 struct SpeedUpShadow(B){
 	int creature;
@@ -12204,11 +12205,13 @@ bool speedUp(B)(ref MovingObject!B object,SacSpell!B spell,float duration,Object
 	object.creatureStats.effects.numSpeedUps+=1;
 	if(object.creatureStats.effects.speedUpFrame==-1)
 		object.creatureStats.effects.speedUpFrame=state.frame;
-	state.addEffect(SpeedUp!B(object.id,cast(int)(duration*updateFPS)));
+	state.addEffect(SpeedUp!B(object.id,cast(int)(duration*updateFPS),0,spell.spellArgFloat("fmul",2.0f)));
 	return true;
 }
 bool speedUp(B)(ref MovingObject!B object,SacSpell!B spell,ObjectState!B state){
-	auto duration=(object.isWizard?spell.duration*0.2f:spell.duration*1000.0f/object.creatureStats.maxHealth)+0.5f;
+	// original (SpeedupStart): wizard 10·duration ticks, creature 60000/maxHP·duration ticks.
+	// the speed itself ramps up and down separately (updateSpeedUpBonus).
+	auto duration=object.isWizard?spell.duration*(10.0f/60.0f):spell.duration*1000.0f/object.creatureStats.maxHealth;
 	return speedUp(object,spell,duration,state);
 }
 bool speedUp(B)(int creature,SacSpell!B spell,ObjectState!B state){
@@ -16686,6 +16689,7 @@ void updateGhostHealth(B)(ref MovingObject!B object){
 
 void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 	object.updateGhostHealth();
+	object.updateSpeedUpBonus(state);
 	if(object.isRegenerating) with(object.creatureStats){
 		auto factor=maxMana==0.0f?1.0f:mana/maxMana;
 		object.heal(factor*max(0.0f,regeneration*effects.poisonRegeneration)/updateFPS,state);
@@ -17745,33 +17749,42 @@ bool updateSpeedUp(B)(ref SpeedUp!B speedUp,ObjectState!B state){
 	with(speedUp){
 		if(!state.isValidTarget(creature,TargetType.creature)) return false;
 		framesLeft-=1;
-		return state.movingObjectById!((ref obj,framesLeft,state){
-			enum coolDownTime=(1.0f*updateFPS);
-			void remove(){
-				if(framesLeft+1>=coolDownTime){
-					obj.creatureStats.effects.numSpeedUps-=1;
-					if(!obj.creatureStats.effects.numSpeedUps)
-						obj.creatureStats.effects.speedUpFrame=-1;
-				}
-			}
-			if(obj.health==0.0f){
-				remove();
-				framesLeft=0;
+		return state.movingObjectById!((ref obj,framesLeft,fmul,state){
+			// original (SpeedupRun): while active, target running speed ×fmul and target flying speed ×(1+0.5·(fmul-1)).
+			// the actual speed approaches the target gradually (updateSpeedUpBonus), also after the effect ends.
+			if(obj.health==0.0f) framesLeft=0;
+			if(!framesLeft){
+				// like removing the SPED effect name in the original: a new speed up can be applied from now on
+				obj.creatureStats.effects.numSpeedUps-=1;
+				if(!obj.creatureStats.effects.numSpeedUps)
+					obj.creatureStats.effects.speedUpFrame=-1;
+				return false;
 			}
 			if(obj.creatureStats.effects.speedUpUpdateFrame!=state.frame){
 				obj.creatureStats.effects.speedUp=1.0f;
+				obj.creatureStats.effects.speedUpFlying=1.0f;
 				obj.creatureStats.effects.speedUpUpdateFrame=state.frame;
 			}
-			if(!framesLeft) return false;
-			//float speedUpFactor=1.75f^^min(1.0f,framesLeft*(1.0f/(0.5f*updateFPS)));
-			float speedUpFactor=1.0f+0.75f*min(1.0f,framesLeft*(1.0f/coolDownTime));
-			obj.creatureStats.effects.speedUp*=speedUpFactor;
-			if(framesLeft>=coolDownTime){
-				state.continueParticles!speedUpParticles(speedUp.particleEmitter,obj.hitbox);
-				state.addEffect(SpeedUpShadow!B(obj.id,obj.position,obj.rotation,obj.scale,obj.animationState,obj.frame));
-			}else remove();
+			obj.creatureStats.effects.speedUp*=fmul;
+			obj.creatureStats.effects.speedUpFlying*=1.0f+0.5f*(fmul-1.0f);
+			state.continueParticles!speedUpParticles(speedUp.particleEmitter,obj.hitbox);
+			state.addEffect(SpeedUpShadow!B(obj.id,obj.position,obj.rotation,obj.scale,obj.animationState,obj.frame));
 			return true;
-		},()=>false)(creature,framesLeft,state);
+		},()=>false)(creature,framesLeft,fmul,state);
+	}
+}
+// original (0x45a670): the current stat approaches the target stat by 10 units per tick (CRE8 units, 0.01 m/s each)
+enum speedUpRampPerFrame=10.0f*0.01f*60.0f/updateFPS;
+void updateSpeedUpBonus(B)(ref MovingObject!B object,ObjectState!B state){
+	static float approach(float current,float target,float step){
+		return current<target?min(current+step,target):max(current-step,target);
+	}
+	with(object.creatureStats){
+		bool active=effects.speedUpUpdateFrame==state.frame; // set by updateSpeedUp, which runs before the creatures
+		auto runningTarget=active?runningSpeed*(effects.speedUp-1.0f):0.0f;
+		auto flyingTarget=active?flyingSpeed*(effects.speedUpFlying-1.0f):0.0f;
+		effects.speedUpBonus=approach(effects.speedUpBonus,runningTarget,speedUpRampPerFrame);
+		effects.speedUpBonusFlying=approach(effects.speedUpBonusFlying,flyingTarget,speedUpRampPerFrame);
 	}
 }
 
