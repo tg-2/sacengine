@@ -1260,6 +1260,8 @@ void serialize(alias sink,B)(Recording!B recording)in{
 	serialize!sink(recording.stateReplacements);
 
 	serialize!sink(recording.desynchs);
+
+	serialize!sink(recording.sidechannelChatMessages); // (last, so that older recordings without it can still be read)
 }
 void deserialize(T,R)(T recording,ref R data)if(is(T==Recording!B,B)){
 	enum _=is(T==Recording!B,B);
@@ -1320,6 +1322,8 @@ void deserialize(T,R)(T recording,ref R data)if(is(T==Recording!B,B)){
 		auto state=deserializeObjectState!B(map,sides,proximity,pathFinder,triggers,data);
 		recording.desynchs~=Recording!B.Desynch(side,state);
 	}
+
+	if(data.length) deserialize(recording.sidechannelChatMessages,ObjectState!B.init,data);
 }
 
 

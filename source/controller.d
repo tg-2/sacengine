@@ -131,26 +131,58 @@ final class Controller(B){
 			return false;
 		return true;
 	}
+	// chat messages that are not part of the game state (observer chat, chat while the game is not running, chat in a replay)
+	private NetworkState!B localSidechannel;
+	NetworkState!B sidechannel(){
+		if(network) return network.networkState;
+		if(!localSidechannel) localSidechannel=new NetworkState!B();
+		return localSidechannel;
+	}
+	void addSidechannelChatMessage(ChatMessage!B message){
+		if(recording&&message.content.type==ChatMessageType.observer)
+			recording.addSidechannelChatMessage(message);
+		if(auto sidechannel=this.sidechannel)
+			sidechannel.chatMessages.addChatMessage(move(message));
+	}
+	private void sendSidechannelChatMessage(Command!B command)in{
+		assert(command.type==CommandType.chatMessage&&command.id==0);
+	}do{
+		if(command.side==-1){
+			command.chatMessage.slotFilter=-1;
+			command.chatMessage.content.type=ChatMessageType.observer;
+		}
+		if(network) network.addCommand(-1,command); // (the host checks it and forwards it to the other players)
+		addSidechannelChatMessage(move(command.chatMessage));
+	}
+	private size_t playbackChatMessageIndex=0;
+	private void showPlaybackChatMessages(){
+		auto messages=playback.sidechannelChatMessages.data;
+		auto frame=state.currentFrame;
+		for(;playbackChatMessageIndex<messages.length&&messages[playbackChatMessageIndex].startFrame<=frame;++playbackChatMessageIndex){
+			auto message=messages[playbackChatMessageIndex];
+			if(message.startFrame+message.lifetime<frame) continue; // (sent before the frame where the replay started)
+			sidechannel.chatMessages.addChatMessage(move(message));
+		}
+	}
+
 	void addCommand(Command!B command)in{
 		assert(command.id==0);
 	}do{
-		if(network&&!network.playing){
+		if(playback){ // a replay cannot be changed, chat is only shown locally
 			if(command.type==CommandType.chatMessage){
-				// TODO: properly authorize observer chat
-				network.addCommand(currentFrame,command);
-				if(network.networkState)
-					network.networkState.chatMessages.addChatMessage(command.chatMessage);
+				command.side=-1;
+				sendSidechannelChatMessage(move(command));
 			}
 			return;
 		}
+		if(command.type==CommandType.chatMessage&&(command.side==-1||network&&!network.playing)){
+			// observer chat does not become part of the game state
+			sendSidechannelChatMessage(move(command));
+			return;
+		}
+		if(network&&!network.playing) return;
 		if(!isControllingSide(command.side)){
-			bool observerChat=command.side==-1&&command.type==CommandType.chatMessage;
-			if(observerChat){
-				if(network&&!network.isHost){
-					network.addCommand(-1,command);
-					return;
-				}
-			}else if(network||command.type!=CommandType.triggerResponse) return;
+			if(network||command.type!=CommandType.triggerResponse) return;
 		}
 		command.id=++commandId;
 		auto frame=max(state.committedFrame,currentFrame); // TODO: why max needed?
@@ -483,6 +515,7 @@ final class Controller(B){
 			}
 			numSteps+=1;
 		}
+		if(playback) showPlaybackChatMessages();
 		frameprof.reportCatchUp(state.currentFrame,numSteps,fpSw.peek);
 		if(network){
 			playAudio=false;
